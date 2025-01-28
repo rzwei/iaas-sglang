@@ -181,6 +181,10 @@ TORCH_LIBRARY_EXPAND(sgl_kernel, m) {
       "top_p_sampling_from_probs(Tensor probs, Tensor uniform_samples, Tensor! samples, Tensor! success, Tensor? "
       "maybe_top_p_arr, float top_p_val, bool deterministic, int cuda_stream) -> ()");
   m.impl("top_p_sampling_from_probs", torch::kCUDA, &top_p_sampling_from_probs);
+
+  m.def("deepseekv3_fused_gate(Tensor input, Tensor bias, int num_rows) -> (Tensor[])");
+  m.impl("deepseekv3_fused_gate", torch::kCUDA, &deepseekv3_fused_gate);
+
 }
 
 REGISTER_EXTENSION(common_ops)
