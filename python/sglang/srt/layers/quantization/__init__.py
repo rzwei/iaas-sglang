@@ -286,6 +286,7 @@ def monkey_patch_moe_apply(class_obj: "FusedMoEMethodBase"):
             activation: str = "silu",
             inplace: bool = True,
             no_combine: bool = False,
+            scoring_func: str = "softmax",
         ):
             assert activation == "silu"
             assert inplace and not no_combine
@@ -301,6 +302,7 @@ def monkey_patch_moe_apply(class_obj: "FusedMoEMethodBase"):
                 "topk_group": topk_group,
                 "num_expert_group": num_expert_group,
                 "custom_routing_function": custom_routing_function,
+                "scoring_func": scoring_func,
             }
             if correction_bias is not None:
                 if not has_correction_bias:

@@ -306,6 +306,7 @@ class FusedMoE(torch.nn.Module):
         self.use_presharded_weights = use_presharded_weights
         self.inplace = inplace
         self.no_combine = no_combine
+        self.scoring_func = scoring_func
 
         if quant_config is None:
             self.quant_method: Optional[QuantizeMethodBase] = (
@@ -628,7 +629,7 @@ class FusedMoE(torch.nn.Module):
             num_expert_group=self.num_expert_group,
             custom_routing_function=self.custom_routing_function,
             scoring_func=self.scoring_func,
-            e_score_correction_bias=self.correction_bias,
+            correction_bias=self.correction_bias,
             # activation=self.activation,
         )
 
