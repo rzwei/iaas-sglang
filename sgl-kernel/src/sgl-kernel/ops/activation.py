@@ -4,6 +4,7 @@ import sgl_kernel.ops._kernels
 import torch
 from sgl_kernel.ops.utils import get_cuda_stream
 
+import hcdbg
 
 # These implementations extensively draw from and build upon the FlashInfer project https://github.com/flashinfer-ai/flashinfer
 # Kudos to @yzh119
@@ -13,6 +14,7 @@ def rmsnorm(
     eps: float = 1e-6,
     out: Optional[torch.Tensor] = None,
 ) -> torch.Tensor:
+    hcdbg.jack_print(f'hcdbg: sgl-kernel rmsnorm():') # debug
     if out is None:
         out = torch.empty_like(input)
     torch.ops.sgl_kernels.rmsnorm(out, input, weight, eps, get_cuda_stream())
@@ -22,6 +24,7 @@ def rmsnorm(
 def fused_add_rmsnorm(
     input: torch.Tensor, residual: torch.Tensor, weight: torch.Tensor, eps: float = 1e-6
 ) -> None:
+    hcdbg.jack_print(f'hcdbg: sgl-kernel fused_add_rmsnorm():') # debug
     torch.ops.sgl_kernels.fused_add_rmsnorm(input, residual, weight, eps)
 
 
@@ -31,6 +34,7 @@ def gemma_rmsnorm(
     eps: float = 1e-6,
     out: Optional[torch.Tensor] = None,
 ) -> torch.Tensor:
+    hcdbg.jack_print(f'hcdbg: sgl-kernel gemma_rmsnorm():') # debug
     if out is None:
         out = torch.empty_like(input)
     torch.ops.sgl_kernels.gemma_rmsnorm(out, input, weight, eps, get_cuda_stream())
@@ -40,6 +44,7 @@ def gemma_rmsnorm(
 def gemma_fused_add_rmsnorm(
     input: torch.Tensor, residual: torch.Tensor, weight: torch.Tensor, eps: float = 1e-6
 ) -> None:
+    hcdbg.jack_print(f'hcdbg: sgl-kernel gemma_fused_add_rmsnorm():') # debug
     torch.ops.sgl_kernels.gemma_fused_add_rmsnorm(
         input, residual, weight, eps, get_cuda_stream()
     )
@@ -56,6 +61,7 @@ def _check_shape(input: torch.Tensor, output: torch.Tensor) -> None:
 
 
 def silu_and_mul(input: torch.Tensor, out: torch.Tensor = None) -> torch.Tensor:
+    hcdbg.jack_print(f'hcdbg: sgl-kernel silu_and_mul():') # debug
     if input.shape[-1] * input.dtype.itemsize % 16 != 0:
         raise ValueError("The pointers must be multiple of 16 bytes.")
     if out is not None:
@@ -71,6 +77,7 @@ def silu_and_mul(input: torch.Tensor, out: torch.Tensor = None) -> torch.Tensor:
 
 
 def gelu_tanh_and_mul(input: torch.Tensor, out: torch.Tensor = None) -> torch.Tensor:
+    hcdbg.jack_print(f'hcdbg: sgl-kernel gelu_tanh_and_mul():') # debug
     if input.shape[-1] * input.dtype.itemsize % 16 != 0:
         raise ValueError("The pointers must be multiple of 16 bytes.")
     if out is not None:
@@ -86,6 +93,7 @@ def gelu_tanh_and_mul(input: torch.Tensor, out: torch.Tensor = None) -> torch.Te
 
 
 def gelu_and_mul(input: torch.Tensor, out: torch.Tensor = None) -> torch.Tensor:
+    hcdbg.jack_print(f'hcdbg: sgl-kernel gelu_and_mul():') # debug
     if input.shape[-1] * input.dtype.itemsize % 16 != 0:
         raise ValueError("The pointers must be multiple of 16 bytes.")
     if out is not None:
@@ -137,6 +145,7 @@ def apply_rope_with_cos_sin_cache_inplace(
     ----
     The rotary dimension is determined by the cosine cache and sine cache.
     """
+    hcdbg.jack_print(f'hcdbg: sgl-kernel apply_rope_with_cos_sin_cache_inplace():') # debug
     if cos_sin_cache.dtype != torch.float32:
         raise ValueError("cos_sin_cache should be float32")
 

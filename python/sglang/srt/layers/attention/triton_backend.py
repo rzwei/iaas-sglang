@@ -17,6 +17,7 @@ if TYPE_CHECKING:
     from sglang.srt.model_executor.model_runner import ModelRunner
     from sglang.srt.speculative.eagle_utils import EagleDraftInput, EagleVerifyInput
 
+import hcdbg
 
 class TritonAttnBackend(AttentionBackend):
     def __init__(
@@ -25,6 +26,7 @@ class TritonAttnBackend(AttentionBackend):
         skip_prefill: bool = False,
         kv_indptr_buf: Optional[torch.Tensor] = None,
     ):
+        hcdbg.jack_print(f'hcdbg: TritonAttnBackend.__init__():') # debug
         # Lazy import to avoid the initialization of cuda context
         from sglang.srt.layers.attention.triton_ops.decode_attention import (
             decode_attention_fwd,

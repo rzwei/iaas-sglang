@@ -65,6 +65,8 @@ from sglang.srt.model_executor.forward_batch_info import ForwardBatch
 from sglang.srt.model_loader.weight_utils import default_weight_loader
 from sglang.srt.utils import add_prefix, is_cuda_available, is_hip
 
+import hcdbg
+
 is_hip_ = is_hip()
 
 if is_cuda_available():
@@ -390,6 +392,7 @@ class DeepseekV2AttentionMLA(nn.Module):
         prefix: str = "",
     ) -> None:
         super().__init__()
+        hcdbg.jack_print(f'hcdbg: DeepseekV2AttentionMLA.__init__():') # debug
         self.layer_id = layer_id
         self.hidden_size = hidden_size
         self.qk_nope_head_dim = qk_nope_head_dim

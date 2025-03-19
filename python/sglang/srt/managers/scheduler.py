@@ -110,6 +110,8 @@ from sglang.srt.utils import (
 )
 from sglang.utils import TypeBasedDispatcher, get_exception_traceback
 
+import hcdbg
+
 logger = logging.getLogger(__name__)
 
 # Test retract decode for debugging purposes
@@ -143,6 +145,8 @@ class Scheduler:
         tp_rank: int,
         dp_rank: Optional[int],
     ):
+        hcdbg.jack_print(f'hcdbg: Scheduler:__init__() ') # debug
+
         # Parse args
         self.server_args = server_args
         self.tp_rank = tp_rank
@@ -2252,6 +2256,8 @@ def run_scheduler_process(
     dp_rank: Optional[int],
     pipe_writer,
 ):
+    hcdbg.jack_print(f'hcdbg: run_scheduler_process(): ') # debug
+
     # Config the process
     # kill_itself_when_parent_died()  # This is disabled because it does not work for `--dp 2`
     setproctitle.setproctitle(f"sglang::scheduler_{dp_rank}")

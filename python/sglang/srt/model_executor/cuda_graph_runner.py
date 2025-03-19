@@ -40,9 +40,12 @@ is_hip_ = is_hip()
 if TYPE_CHECKING:
     from sglang.srt.model_executor.model_runner import ModelRunner
 
+import hcdbg
 
 def _to_torch(model: torch.nn.Module, reverse: bool, num_tokens: int):
     for sub in model._modules.values():
+        hcdbg.jack_print(f'hcdbg: cuda_graph_runner:_to_torch(): sub={sub}') # debug
+
         if isinstance(sub, CustomOp):
             if reverse:
                 sub._forward_method = sub.forward_cuda

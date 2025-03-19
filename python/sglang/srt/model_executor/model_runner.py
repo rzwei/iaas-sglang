@@ -85,12 +85,15 @@ if is_hip_:
     from sglang.srt.layers.attention.aiter_backend import AiterAttnBackend
     from sglang.srt.layers.attention.aiter_decode_backend import AiterDecodeAttnBackend
 
+import hcdbg
+
 logger = logging.getLogger(__name__)
 
 
 SGLANG_CI_SMALL_KV_SIZE = os.getenv("SGLANG_CI_SMALL_KV_SIZE", None)
 UNBALANCED_MODEL_LOADING_TIMEOUT_S = 300
 
+g_server_args = None
 
 class ModelRunner:
     """ModelRunner runs the forward passes of the models."""
@@ -126,6 +129,19 @@ class ModelRunner:
         )
         self.req_to_token_pool = req_to_token_pool
         self.token_to_kv_pool_allocator = token_to_kv_pool_allocator
+
+        hcdbg.jack_print(f'hcdbg: ModelRunner:__init__() ') # debug
+        global g_server_args
+        g_server_args = ServerArgs(**server_args.__dict__)
+        # print(f"server_args inited: {server_args}")
+        # print(f"g_server_args assigned: {g_server_args}")
+
+        if os.environ.get("VLLM_USE_TRITON_NON_ATTN", "").lower() in ("true", "1"):
+            logger.info("VLLM_USE_TRITON_NON_ATTN is enabled")
+        else:
+            logger.info("VLLM_USE_TRITON_NON_ATTN is disabled")
+
+        print(f"torch_compile = {server_args.enable_torch_compile}, cuda_graph = {not server_args.disable_cuda_graph} ")
 
         # Model-specific adjustment
         self.model_specific_adjustment()
@@ -171,8 +187,11 @@ class ModelRunner:
         )
 
         # Load the model
+        hcdbg.jack_print(f'hcdbg: ModelRunner:__init__() -> Sampler()') # debug
         self.sampler = Sampler()
+        hcdbg.jack_print(f'hcdbg: ModelRunner:__init__() -> load_model()') # debug
         self.load_model()
+        hcdbg.jack_print(f'hcdbg: ModelRunner:__init__() -> load_model() Done') # debug
 
         # Apply torchao quantization
         torchao_applied = getattr(self.model, "torchao_applied", False)
@@ -210,6 +229,8 @@ class ModelRunner:
 
     def model_specific_adjustment(self):
         server_args = self.server_args
+
+        hcdbg.jack_print(f'hcdbg: ModelRunner.model_specific_adjustment():') # debug
 
         if (
             self.model_config.attention_arch == AttentionArch.MLA
@@ -263,6 +284,8 @@ class ModelRunner:
 
     def init_torch_distributed(self):
         logger.info("Init torch distributed begin.")
+
+        hcdbg.jack_print(f'hcdbg: ModelRunner.init_torch_distributed():') # debug
 
         torch.get_device_module(self.device).set_device(self.gpu_id)
         if self.device == "cuda":
@@ -322,6 +345,7 @@ class ModelRunner:
         return min_per_gpu_memory
 
     def load_model(self):
+        hcdbg.jack_print(f'hcdbg: ModelRunner.load_model():') # debug
         before_avail_memory = get_available_gpu_memory(self.device, self.gpu_id)
         logger.info(
             f"Load weight begin. avail mem={get_available_gpu_memory(self.device, self.gpu_id):.2f} GB"
@@ -644,6 +668,7 @@ class ModelRunner:
         max_num_reqs: Optional[int] = None,
         max_total_tokens: Optional[int] = None,
     ):
+        hcdbg.jack_print(f'hcdbg: ModelRunner.init_memory_pool():') # debug
         if self.server_args.kv_cache_dtype == "auto":
             self.kv_cache_dtype = self.dtype
         elif self.server_args.kv_cache_dtype == "fp8_e5m2":
@@ -784,6 +809,8 @@ class ModelRunner:
 
     def init_attention_backend(self):
         """Init attention kernel backend."""
+
+        hcdbg.jack_print(f'hcdbg: ModelRunner.init_attention_backend(): select attention backend') # debug
         if is_cuda():
             if self.server_args.attention_backend == "flashinfer":
                 # Init streams
@@ -791,6 +818,7 @@ class ModelRunner:
                     self.plan_stream_for_flashinfer = torch.cuda.Stream()
 
                 self.attn_backend = FlashInferAttnBackend(self)
+                hcdbg.jack_print(f'hcdbg: ModelRunner.init_attention_backend(): select \'FlashInferAttnBackend\' as the attention backend') # debug
             elif self.server_args.attention_backend == "triton":
                 assert self.sliding_window_size is None, (
                     "Window attention is not supported in the triton attention backend. "
@@ -859,6 +887,8 @@ class ModelRunner:
         """Capture cuda graphs."""
         self.cuda_graph_runner = None
 
+        hcdbg.jack_print(f'hcdbg: ModelRunner.init_cuda_graphs():') # debug
+
         if not self.is_generation:
             # TODO: Currently, cuda graph only captures decode steps, which only exists for generation models
             return
@@ -882,10 +912,13 @@ class ModelRunner:
         logger.info(f"Enabling torch tensor parallelism on {self.tp_size} devices.")
         from sglang.srt.model_parallel import tensor_parallel
 
+        hcdbg.jack_print(f'hcdbg: ModelRunner.apply_torch_tp():') # debug
+
         device_mesh = torch.distributed.init_device_mesh(self.device, (self.tp_size,))
         tensor_parallel(self.model, device_mesh)
 
     def forward_decode(self, forward_batch: ForwardBatch):
+        hcdbg.jack_print(f'hcdbg: ModelRunner:forward_decode() ') # debug
         self.attn_backend.init_forward_metadata(forward_batch)
         return self.model.forward(
             forward_batch.input_ids, forward_batch.positions, forward_batch
@@ -894,6 +927,7 @@ class ModelRunner:
     def forward_extend(
         self, forward_batch: ForwardBatch, skip_attn_backend_init: bool = False
     ):
+        hcdbg.jack_print(f'hcdbg: ModelRunner:forward_extend() ') # debug
         if not skip_attn_backend_init:
             self.attn_backend.init_forward_metadata(forward_batch)
 
@@ -919,6 +953,7 @@ class ModelRunner:
             )
 
     def forward_idle(self, forward_batch: ForwardBatch):
+        hcdbg.jack_print(f'hcdbg: ModelRunner:forward_idle() ') # debug
         return self.model.forward(
             forward_batch.input_ids, forward_batch.positions, forward_batch
         )
@@ -926,6 +961,8 @@ class ModelRunner:
     def forward(
         self, forward_batch: ForwardBatch, skip_attn_backend_init: bool = False
     ) -> LogitsProcessorOutput:
+        hcdbg.jack_print(f'hcdbg: ModelRunner:foward() ') # debug
+
         if (
             forward_batch.forward_mode.is_cuda_graph()
             and self.cuda_graph_runner

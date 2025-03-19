@@ -36,6 +36,7 @@ if is_flashinfer_available():
         BatchPrefillWithRaggedKVCacheWrapper,
     )
 
+import hcdbg
 
 @dataclass
 class DecodeMetadata:
@@ -61,6 +62,7 @@ class FlashInferMLAAttnBackend(AttentionBackend):
     ):
         super().__init__()
 
+        hcdbg.jack_print(f'hcdbg: FlashInferMLAAttnBackend.__init__():') # debug
         # Parse constants
         self.max_context_len = model_runner.model_config.context_len
         self.device = model_runner.device

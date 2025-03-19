@@ -52,6 +52,8 @@ from sglang.srt.model_loader.weight_utils import (
 from sglang.srt.utils import add_prefix, make_layers
 from sglang.utils import get_exception_traceback
 
+import hcdbg
+
 logger = logging.getLogger(__name__)
 
 
@@ -110,6 +112,7 @@ class LlamaAttention(nn.Module):
         bias: bool = False,
     ) -> None:
         super().__init__()
+        hcdbg.jack_print(f'hcdbg: LlamaAttention.__init__():') # debug
         self.hidden_size = hidden_size
         tp_size = get_tensor_model_parallel_world_size()
         self.total_num_heads = num_heads

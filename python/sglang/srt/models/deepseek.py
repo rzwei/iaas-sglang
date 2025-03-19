@@ -48,6 +48,7 @@ from sglang.srt.model_executor.forward_batch_info import ForwardBatch
 from sglang.srt.model_loader.weight_utils import default_weight_loader
 from sglang.srt.utils import add_prefix
 
+import hcdbg
 
 class DeepseekMLP(nn.Module):
 
@@ -202,6 +203,7 @@ class DeepseekAttention(nn.Module):
         prefix: str = "",
     ) -> None:
         super().__init__()
+        hcdbg.jack_print(f'hcdbg: DeepseekAttention.__init__():') # debug
         self.hidden_size = hidden_size
         tp_size = get_tensor_model_parallel_world_size()
         self.total_num_heads = num_heads

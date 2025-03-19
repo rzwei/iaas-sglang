@@ -53,6 +53,7 @@ from sglang.srt.utils import (
     set_weight_attrs,
 )
 
+import hcdbg
 
 @contextmanager
 def device_loading_context(module: torch.nn.Module, target_device: torch.device):
@@ -351,6 +352,7 @@ class DefaultModelLoader(BaseModelLoader):
         model_config: ModelConfig,
         device_config: DeviceConfig,
     ) -> nn.Module:
+        hcdbg.jack_print(f'hcdbg: DefaultModelLoader:load_model() ') # debug
         target_device = torch.device(device_config.device)
         with set_default_torch_dtype(model_config.dtype):
             with target_device:
@@ -1205,6 +1207,8 @@ class GGUFModelLoader(BaseModelLoader):
 
 def get_model_loader(load_config: LoadConfig) -> BaseModelLoader:
     """Get a model loader based on the load format."""
+
+    hcdbg.jack_print(f'hcdbg: get_model_loader() ') # debug
 
     if isinstance(load_config.load_format, type):
         return load_config.load_format(load_config)

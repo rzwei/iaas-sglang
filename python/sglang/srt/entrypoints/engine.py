@@ -66,9 +66,13 @@ from sglang.srt.utils import (
 )
 from sglang.version import __version__
 
+import hcdbg
+
 logger = logging.getLogger(__name__)
 asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 
+# g_server_args = None
+# g_server_args = ServerArgs("NULL")
 
 class Engine:
     """
@@ -83,7 +87,6 @@ class Engine:
     1. The HTTP server, Engine, and TokenizerManager both run in the main process.
     2. Inter-process communication is done through ICP (each process uses a different port) via the ZMQ library.
     """
-
     def __init__(self, **kwargs):
         """
         The arguments of this function is the same as `sglang/srt/server_args.py::ServerArgs`.
@@ -98,6 +101,29 @@ class Engine:
                 # Do not print logs by default
                 kwargs["log_level"] = "error"
             server_args = ServerArgs(**kwargs)
+
+        # It’s too early at this point; the issue involves different processes, making global variables unusable.
+        # == 這邊太早了 牽涉到不同process問題全局變數無法用 
+
+        # import copy
+        # print(f"server_args init：{server_args}")
+        # global g_server_args
+        # g_server_args = ServerArgs(**server_args.__dict__)
+        # # g_server_args = copy.deepcopy(server_args)
+        # # g_server_args = ServerArgs(**server_args.__dict__)
+        # print(f"g_server_args assgined：{g_server_args}")
+
+
+        # g_server_args.update(server_args)
+        hcdbg.jack_print(f'hcdbg: Engine: {server_args}') # debug
+        hcdbg.jack_print(f'hcdbg: Engine()(offline) -> _launch_subprocesses()') # debug
+
+        if os.environ.get("VLLM_USE_TRITON_NON_ATTN", "").lower() in ("true", "1"):
+            hcdbg.jack_print("✅ VLLM_USE_TRITON_NON_ATTN is enabled ✅")
+        else:
+            hcdbg.jack_print("❌ VLLM_USE_TRITON_NON_ATTN is disabled ❌")
+        hcdbg.jack_print(f"torch_compile = {server_args.enable_torch_compile}  "
+                         f"cuda_graph = {not server_args.disable_cuda_graph}")
 
         # Shutdown the subprocesses automatically when the program exits
         atexit.register(self.shutdown)
@@ -418,6 +444,8 @@ def _launch_subprocesses(server_args: ServerArgs) -> Tuple[TokenizerManager, Dic
     # Allocate ports for inter-process communications
     port_args = PortArgs.init_new(server_args)
     logger.info(f"{server_args=}")
+
+    hcdbg.jack_print(f'hcdbg: _launch_subprocesses(): Both offline and online gather here') # debug
 
     # If using model from www.modelscope.cn, first download the model.
     server_args.model_path, server_args.tokenizer_path = prepare_model_and_tokenizer(

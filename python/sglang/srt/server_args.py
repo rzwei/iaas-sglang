@@ -124,6 +124,9 @@ class ServerArgs:
     sampling_backend: Optional[str] = None
     grammar_backend: Optional[str] = "outlines"
 
+    # Primative Kernels
+    use_triton_primative_kernels: bool = False
+
     # Speculative decoding
     speculative_algorithm: Optional[str] = None
     speculative_draft_model_path: Optional[str] = None
@@ -750,6 +753,12 @@ class ServerArgs:
             "--flashinfer-mla-disable-ragged",
             action="store_true",
             help="Not using ragged prefill wrapper when running flashinfer mla",
+        )
+        parser.add_argument(
+            "--use-triton-primative-kernels",
+            action="store_true",
+            default=ServerArgs.use_triton_primative_kernels,
+            help="TODO: hcdbg: Use Triton primative kernels",
         )
 
         # Speculative decoding

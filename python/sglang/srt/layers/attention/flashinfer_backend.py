@@ -37,6 +37,7 @@ if is_flashinfer_available():
     from flashinfer.cascade import merge_state
     from flashinfer.decode import _get_range_buf, get_seq_lens
 
+import hcdbg
 
 class WrapperDispatch(Enum):
     SLIDING_WINDOW = auto()
@@ -71,6 +72,7 @@ class FlashInferAttnBackend(AttentionBackend):
     ):
         super().__init__()
 
+        hcdbg.jack_print(f'hcdbg: FlashInferAttnBackend.__init__():') # debug
         # Parse constants
         self.decode_use_tensor_cores = should_use_tensor_core(
             kv_cache_dtype=model_runner.kv_cache_dtype,
