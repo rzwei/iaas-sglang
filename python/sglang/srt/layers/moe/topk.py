@@ -21,6 +21,8 @@ from sglang.srt.utils import get_compiler_backend, is_cuda
 
 _is_cuda = is_cuda()
 
+from sgl_kernel import deepseekv3_fused_gate
+
 
 def fused_topk_native(
     hidden_states: torch.Tensor,
@@ -192,15 +194,11 @@ def select_experts(
                 topk_group=topk_group,
             )
         else:
-            topk_weights, topk_ids = biased_grouped_topk(
-                hidden_states=hidden_states,
-                gating_output=router_logits,
-                correction_bias=correction_bias,
-                topk=top_k,
-                renormalize=renormalize,
-                num_expert_group=num_expert_group,
-                topk_group=topk_group,
+            topk_weights, topk_ids = deepseekv3_fused_gate(
+                router_logits,
+                correction_bias,
             )
+            
     elif torch_native and custom_routing_function is None:
         topk_weights, topk_ids = fused_topk_native(
             hidden_states=hidden_states,
