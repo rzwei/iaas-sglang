@@ -33,7 +33,7 @@ from sgl_kernel.gemm import (
     sgl_per_token_group_quant_fp8,
     sgl_per_token_quant_fp8,
 )
-from sgl_kernel.moe import moe_align_block_size, topk_softmax, deepseekv3_fused_gate
+from sgl_kernel.moe import deepseekv3_fused_gate, moe_align_block_size, topk_softmax
 from sgl_kernel.sampling import (
     min_p_sampling_from_probs,
     top_k_renorm_prob,

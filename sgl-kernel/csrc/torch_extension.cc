@@ -184,7 +184,6 @@ TORCH_LIBRARY_EXPAND(sgl_kernel, m) {
 
   m.def("deepseekv3_fused_gate(Tensor input, Tensor bias) -> (Tensor[])");
   m.impl("deepseekv3_fused_gate", torch::kCUDA, &deepseekv3_fused_gate);
-
 }
 
 REGISTER_EXTENSION(common_ops)
