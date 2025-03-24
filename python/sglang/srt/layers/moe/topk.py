@@ -198,7 +198,7 @@ def select_experts(
                 router_logits,
                 correction_bias,
             )
-            
+
     elif torch_native and custom_routing_function is None:
         topk_weights, topk_ids = fused_topk_native(
             hidden_states=hidden_states,

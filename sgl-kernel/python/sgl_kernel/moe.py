@@ -33,5 +33,6 @@ def topk_softmax(
         topk_weights, topk_ids, token_expert_indices, gating_output
     )
 
+
 def deepseekv3_fused_gate(input_tensor, bias):
     return torch.ops.sgl_kernel.deepseekv3_fused_gate(input_tensor, bias)

@@ -1,7 +1,8 @@
-import torch
 import pytest
-from tqdm import tqdm
+import torch
 from sgl_kernel import deepseekv3_fused_gate
+from tqdm import tqdm
+
 from sglang.srt.layers.moe.topk import biased_grouped_topk
 
 
@@ -20,8 +21,18 @@ def test_deepseekV3GateModule(seq_length):
     )
 
     # correctness check
-    output_check = torch.allclose(ref_output.sort()[0].to(torch.float32), output.sort()[0].to(torch.float32), rtol=1e-04, atol=1e-05)
-    idx_check = torch.allclose(ref_indices.sort()[0].to(torch.int32), indices.sort()[0].to(torch.int32), rtol=1e-04, atol=1e-05)
+    output_check = torch.allclose(
+        ref_output.sort()[0].to(torch.float32),
+        output.sort()[0].to(torch.float32),
+        rtol=1e-04,
+        atol=1e-05,
+    )
+    idx_check = torch.allclose(
+        ref_indices.sort()[0].to(torch.int32),
+        indices.sort()[0].to(torch.int32),
+        rtol=1e-04,
+        atol=1e-05,
+    )
 
     assert output_check, f"Output mismatch at seq_length {seq_length}"
     assert idx_check, f"Indices mismatch at seq_length {seq_length}"

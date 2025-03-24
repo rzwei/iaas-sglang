@@ -5,6 +5,7 @@ import torch
 import triton
 import triton.language as tl
 from sgl_kernel import deepseekv3_fused_gate
+
 from sglang.srt.layers.moe.topk import biased_grouped_topk
 
 
@@ -13,10 +14,10 @@ def biased_grouped_topk_org(scores, bias):
         scores, scores, bias, topk=8, renormalize=True, num_expert_group=8, topk_group=4
     )
 
+
 def biased_grouped_topk_org_kernel(scores, bias):
-    return deepseekv3_fused_gate(
-        scores, bias
-    )
+    return deepseekv3_fused_gate(scores, bias)
+
 
 seq_length_range = [5000, 10000, 15000, 20000, 25000, 30000, 35000, 40000]
 configs = [(sq,) for sq in seq_length_range]
@@ -40,25 +41,19 @@ def benchmark(seq_length, provider):
     device = torch.device("cuda")
     num_experts = 256
 
-    scores = torch.randn(
-        (seq_length, num_experts), device=device, dtype=dtype
-    )
+    scores = torch.randn((seq_length, num_experts), device=device, dtype=dtype)
     bias = torch.rand(num_experts, device=device, dtype=dtype)
 
     quantiles = [0.5, 0.2, 0.8]
 
     if provider == "original":
         ms, min_ms, max_ms = triton.testing.do_bench(
-            lambda: biased_grouped_topk_org(
-                scores.clone(), bias.clone()
-            ),
+            lambda: biased_grouped_topk_org(scores.clone(), bias.clone()),
             quantiles=quantiles,
         )
     elif provider == "kernel":
         ms, min_ms, max_ms = triton.testing.do_bench(
-            lambda: biased_grouped_topk_org_kernel(
-                scores.clone(), bias.clone()
-            ),
+            lambda: biased_grouped_topk_org_kernel(scores.clone(), bias.clone()),
             quantiles=quantiles,
         )
 
