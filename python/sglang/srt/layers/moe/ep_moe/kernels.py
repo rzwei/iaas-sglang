@@ -527,10 +527,12 @@ def grouped_gemm_triton(
     # Reduce block size to prevent L40 shared memory overflow.
     config = {
         "BLOCK_SIZE_M": 64,
-        "BLOCK_SIZE_N": 32,
+        "BLOCK_SIZE_N": 64,
         "BLOCK_SIZE_K": 128,
+        #"GROUP_SIZE_M": 64,
+        "num_warps": 4,
+        "num_stages": 3
     }
-
     m_num_tiles_indptr = torch.zeros(batch_size + 1, device=a.device, dtype=torch.int64)
     compute_m_num_tiles_indptr[(1,)](
         m_num_tiles_indptr, seg_indptr, batch_size, config["BLOCK_SIZE_M"]
