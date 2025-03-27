@@ -45,11 +45,12 @@ class ModelConfig:
         dtype: str = "auto",
         quantization: Optional[str] = None,
         override_config_file: Optional[str] = None,
+        enable_te: bool = False,
     ) -> None:
         self.model_path = model_path
         self.revision = revision
         self.quantization = quantization
-
+        self.enable_te = enable_te
         # Parse args
         self.maybe_pull_model_tokenizer_from_remote()
         self.model_override_args = json.loads(model_override_args)

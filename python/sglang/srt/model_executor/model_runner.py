@@ -208,6 +208,9 @@ class ModelRunner:
             self.cuda_graph_runner = None
             self.init_attention_backend()
 
+        if self.server_args.use_te:
+            self.model_config.use_te = True
+
         # auxiliary hidden capture mode. TODO: expose this to server args?
         if self.spec_algorithm.is_eagle3() and not self.is_draft_worker:
             self.model.set_eagle3_layers_to_capture()
@@ -378,6 +381,17 @@ class ModelRunner:
         # Remove monkey_patch when linear.py quant remove dependencies with vllm
         monkey_patch_vllm_parallel_state()
         monkey_patch_isinstance_for_vllm_base_layer()
+
+        if self.server_args.use_te:
+            logger.info("ModelRunner: Enabling Transformer Engine integration...")
+
+            if hasattr(self.model_config.hf_config, "architectures"):
+                original_arch = self.model_config.hf_config.architectures
+                new_arch = [f"TE{arch}" for arch in original_arch]
+                logger.info(
+                    f"Changing model architecture from {original_arch} to {new_arch}"
+                )
+                self.model_config.hf_config.architectures = new_arch
 
         with self.memory_saver_adapter.region():
             self.model = get_model(

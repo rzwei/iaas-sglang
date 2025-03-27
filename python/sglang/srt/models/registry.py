@@ -8,7 +8,7 @@ from functools import lru_cache
 from typing import AbstractSet, Dict, List, Optional, Tuple, Type, Union
 
 import torch.nn as nn
-
+from sglang.srt.managers.schedule_batch import global_server_args_dict
 logger = logging.getLogger(__name__)
 
 
@@ -56,6 +56,14 @@ class _ModelRegistry:
         architectures: Union[str, List[str]],
     ) -> Tuple[Type[nn.Module], str]:
         architectures = self._normalize_archs(architectures)
+        import pdb; pdb.set_trace()
+        if hasattr(global_server_args_dict, "model_arch_to_class"):
+            arch_map = global_server_args_dict["model_arch_to_class"]
+            for arch in architectures:
+                if arch.lower() in arch_map:
+                    module_path, class_name = arch_map[arch.lower()]
+                    module = importlib.import_module(f"sglang.srt.models.{module_path}")
+                    return (getattr(module, class_name), arch)
 
         for arch in architectures:
             model_cls = self._try_load_model_cls(arch)
@@ -70,7 +78,11 @@ def import_model_classes():
     model_arch_name_to_cls = {}
     package_name = "sglang.srt.models"
     package = importlib.import_module(package_name)
+    import pdb; pdb.set_trace()
     for _, name, ispkg in pkgutil.iter_modules(package.__path__, package_name + "."):
+        print("DEBUGG name={} ispkg={}".format(name, ispkg))    
+        if name == 'sglang.srt.models.llama_te':
+            import pdb; pdb.set_trace()
         if not ispkg:
             try:
                 module = importlib.import_module(name)

@@ -179,7 +179,7 @@ class ServerArgs:
     enable_flashmla: bool = False
     flashinfer_mla_disable_ragged: bool = False
     warmups: Optional[str] = None
-
+    use_te: bool = False
     # Debug tensor dumps
     debug_tensor_dump_output_folder: Optional[str] = None
     debug_tensor_dump_input_file: Optional[str] = None
@@ -1092,6 +1092,12 @@ class ServerArgs:
             type=int,
             default=ServerArgs.disaggregation_bootstrap_port,
             help="Bootstrap server port on the prefill server. Default is 8998.",
+        )
+
+        parser.add_argument(
+            "--use-te",
+            action="store_true",
+            help="Use TransformerEngine to enable TP/SP Overlap",
         )
 
     @classmethod
