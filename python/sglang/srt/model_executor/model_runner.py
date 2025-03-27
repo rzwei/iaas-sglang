@@ -157,7 +157,13 @@ class ModelRunner:
                 "debug_tensor_dump_inject": server_args.debug_tensor_dump_inject,
             }
         )
-
+        if server_args.use_te:
+            global_server_args_dict.update({
+                "model_arch_to_class": {
+                    "llama": ("llama_te", "TELlamaForCausalLM"),
+                    "llamaforcausallm": ("llama_te", "TELlamaForCausalLM"),
+                }
+            })
         # CPU offload
         set_cpu_offload_max_bytes(int(server_args.cpu_offload_gb * 1024**3))
 

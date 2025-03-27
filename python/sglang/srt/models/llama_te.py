@@ -3,7 +3,7 @@ from contextlib import contextmanager
 from typing import Any, Dict, Iterable, Optional, Tuple
 
 import torch
-import transformer_engine as te
+import transformer_engine.pytorch as te
 import transformers
 from torch import nn
 from transformers import LlamaConfig

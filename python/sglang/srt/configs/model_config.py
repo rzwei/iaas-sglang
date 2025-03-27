@@ -168,6 +168,12 @@ class ModelConfig:
         self.hf_eos_token_id = self.get_hf_eos_token_id()
         self.image_token_id = getattr(self.hf_config, "image_token_id", None)
 
+        if self.enable_te:
+            logger.info("TE integration enabled for model loading")
+            if any("LlamaForCausalLM" in arch for arch in self.hf_config.architectures):
+                # 强制将架构改为TE版本
+                self.hf_config.architectures = ["TELlamaForCausalLM"]
+
     # adapted from https://github.com/vllm-project/vllm/blob/main/vllm/config.py#L289
     def get_total_num_kv_heads(self) -> int:
         """Returns the total number of KV heads."""

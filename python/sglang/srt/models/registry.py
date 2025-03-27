@@ -56,8 +56,7 @@ class _ModelRegistry:
         architectures: Union[str, List[str]],
     ) -> Tuple[Type[nn.Module], str]:
         architectures = self._normalize_archs(architectures)
-        import pdb; pdb.set_trace()
-        if hasattr(global_server_args_dict, "model_arch_to_class"):
+        if 'model_arch_to_class' in global_server_args_dict:
             arch_map = global_server_args_dict["model_arch_to_class"]
             for arch in architectures:
                 if arch.lower() in arch_map:
@@ -78,11 +77,7 @@ def import_model_classes():
     model_arch_name_to_cls = {}
     package_name = "sglang.srt.models"
     package = importlib.import_module(package_name)
-    import pdb; pdb.set_trace()
     for _, name, ispkg in pkgutil.iter_modules(package.__path__, package_name + "."):
-        print("DEBUGG name={} ispkg={}".format(name, ispkg))    
-        if name == 'sglang.srt.models.llama_te':
-            import pdb; pdb.set_trace()
         if not ispkg:
             try:
                 module = importlib.import_module(name)
