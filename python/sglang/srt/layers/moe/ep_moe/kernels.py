@@ -1,5 +1,8 @@
 import logging
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
+import functools
+import os
+import json
 
 import torch
 import triton
@@ -14,6 +17,13 @@ if _is_cuda:
     from sglang.srt.layers.quantization.fp8_kernel import (
         sglang_per_token_group_quant_fp8,
     )
+
+def get_device_name() -> str:
+    """Get the name of the current CUDA device."""
+    if not torch.cuda.is_available():
+        return "CPU"
+    return torch.cuda.get_device_name()
+
 logger = logging.getLogger(__name__)
 
 
@@ -492,6 +502,162 @@ def compute_m_num_tiles_indptr(
         tl.store(m_num_tiles_indptr + bs + 1, pre_num_tiles + cur_num_tiles)
 
 
+def get_config_file_name(
+    M: int,  # batch_size
+    N: int, 
+    K: int, 
+    dtype: Optional[str], 
+    block_shape: Optional[List[int]] = None
+) -> str:
+    device_name = get_device_name().replace(" ", "_")
+    dtype_selector = "" if not dtype else f",dtype={dtype}"
+    block_shape_selector = (
+        "" if not block_shape or not all(block_shape) else f",block_shape={block_shape}"
+    )
+    return f"M={M},N={N},K={K},device_name={device_name}{dtype_selector}{block_shape_selector}.json"
+
+
+@functools.lru_cache
+def get_grouped_gemm_configs(
+    M: int,  # batch_size
+    N: int,
+    K: int,
+    dtype: Optional[str],
+    block_n: Optional[int] = 0,
+    block_k: Optional[int] = 0,
+) -> Optional[Dict[int, Any]]:
+    """
+    Return optimized configurations for the grouped gemm kernel.
+
+    The return value will be a dictionary that maps an irregular grid of
+    batch sizes to configurations of the grouped gemm kernel. To evaluate the
+    kernel on a given batch size bs, the closest batch size in the grid should
+    be picked and the associated configuration chosen to invoke the kernel.
+    """
+
+    # First look up if an optimized configuration is available in the configs
+    # directory
+    json_file_name = get_config_file_name(M, N, K, dtype, [block_n, block_k])
+
+    config_file_path = os.path.join(
+        os.path.dirname(os.path.realpath(__file__)), "configs", json_file_name
+    )
+    if os.path.exists(config_file_path):
+        with open(config_file_path) as f:
+            logger.info("Using configuration from %s for grouped gemm kernel.", config_file_path)
+            # If a configuration has been found, return it
+            return {int(key): val for key, val in json.load(f).items()}
+
+    # If no optimized configuration is available, we will use the default
+    # configuration
+    logger.warning(
+        (
+            "Using default grouped gemm config. Performance might be sub-optimal! "
+            "Config file not found at %s"
+        ),
+        config_file_path,
+    )
+    return None
+
+
+def get_default_grouped_gemm_config(
+    M: int,  # batch_size
+    N: int,
+    K: int,
+    dtype: Optional[str],
+    block_shape: Optional[List[int]] = None,
+) -> Dict[str, int]:
+    if dtype == "fp8_w8a8":
+        if block_shape is None:
+            # 根据 batch_size 选择不同的配置
+            if M <= 64:
+                config = {
+                    "BLOCK_SIZE_M": 64,
+                    "BLOCK_SIZE_N": 128,
+                    "BLOCK_SIZE_K": 128,
+                }
+            elif M <= 128:
+                config = {
+                    "BLOCK_SIZE_M": 128,
+                    "BLOCK_SIZE_N": 256,
+                    "BLOCK_SIZE_K": 128,
+                }
+            else:
+                config = {
+                    "BLOCK_SIZE_M": 256,
+                    "BLOCK_SIZE_N": 512,
+                    "BLOCK_SIZE_K": 128,
+                }
+        else:
+            # Block-wise quant: BLOCK_SIZE_K must be divisable by block_shape[1]
+            config = {
+                "BLOCK_SIZE_M": 64,
+                "BLOCK_SIZE_N": block_shape[0],
+                "BLOCK_SIZE_K": block_shape[1],
+            }
+    else:
+        # 根据 batch_size 选择不同的配置
+        if M <= 32:
+            config = {
+                "BLOCK_SIZE_M": 16,
+                "BLOCK_SIZE_N": 32,
+                "BLOCK_SIZE_K": 64,
+            }
+        elif M <= 64:
+            config = {
+                "BLOCK_SIZE_M": 64,
+                "BLOCK_SIZE_N": 64,
+                "BLOCK_SIZE_K": 32,
+            }
+        else:
+            config = {
+                "BLOCK_SIZE_M": 128,
+                "BLOCK_SIZE_N": 128,
+                "BLOCK_SIZE_K": 32,
+            }
+    return config
+
+
+def try_get_optimal_grouped_gemm_config(
+    M: int,  # batch_size
+    N: int,
+    K: int,
+    dtype: Optional[str],
+    block_shape: Optional[List[int]] = None,
+):
+    # First try to load optimal config from the file
+    block_n = block_shape[0] if block_shape else 0
+    block_k = block_shape[1] if block_shape else 0
+    configs = get_grouped_gemm_configs(M, N, K, dtype, block_n, block_k)
+
+    if configs:
+        # 根据 batch_size 选择最接近的配置
+        config = configs[min(configs.keys(), key=lambda x: abs(x - M))]
+    else:
+        # 使用默认配置
+        config = get_default_grouped_gemm_config(M, N, K, dtype, block_shape)
+    return config
+
+
+def get_config_dtype_str(
+    dtype: torch.dtype,
+    use_int8_w8a16: Optional[bool] = False,
+    use_fp8_w8a8: Optional[bool] = False,
+    use_int8_w8a8: Optional[bool] = False,
+):
+    if use_fp8_w8a8:
+        return "fp8_w8a8"
+    elif use_int8_w8a8:
+        return "int8_w8a8"
+    elif use_int8_w8a16:
+        return "int8_w8a16"
+    elif dtype == torch.float:
+        # avoiding cases where kernel fails when float32 MoE
+        # use fp16/bfloat16 configs
+        return "float32"
+    return None
+
+
 def grouped_gemm_triton(
     a: torch.Tensor,
     b: torch.Tensor,
@@ -521,13 +687,20 @@ def grouped_gemm_triton(
         assert triton.cdiv(b.shape[-2], block_n) == scale_b.shape[-2]
         assert triton.cdiv(b.shape[-1], block_k) == scale_b.shape[-1]
 
-    # TODO: adjust config or tune kernel
-    # Reduce block size to prevent L40 shared memory overflow.
-    config = {
-        "BLOCK_SIZE_M": 64,
-        "BLOCK_SIZE_N": 32,
-        "BLOCK_SIZE_K": 128,
-    }
+    config_dtype = get_config_dtype_str(
+        use_fp8_w8a8=use_fp8_w8a8,
+        use_int8_w8a8=False,
+        use_int8_w8a16=False,
+        dtype=a.dtype,
+    )
+
+    config = try_get_optimal_grouped_gemm_config(
+        a.size(0),
+        b.size(1),
+        b.size(2),
+        config_dtype,
+        block_shape,
+    )
 
     m_num_tiles_indptr = torch.zeros(batch_size + 1, device=a.device, dtype=torch.int64)
     compute_m_num_tiles_indptr[(1,)](
