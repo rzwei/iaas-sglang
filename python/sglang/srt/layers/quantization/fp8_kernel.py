@@ -814,6 +814,21 @@ def maxabs_kernel(
     block_max = tl.max(tl.abs(x))
     tl.atomic_max(amax_ptr, block_max.to(tl.float32))
 
+@triton.jit
+def quant_fp8(
+    x_ptr,
+    y_ptr,
+    x_len: tl.constexpr,
+    scale_ptr,
+    fp8_max,
+    BLOCK: tl.constexpr
+):
+    pid = tl.program_id(0)
+    x_off = tl.arange(0, BLOCK) + pid * BLOCK
+    x = tl.load(x_ptr + x_off, mask=(x_off < x_len), other=0.0)
+    scale = tl.load(scale_ptr)
+    y = tl.clamp(x * scale, min=-fp8_max, max=fp8_max)
+    tl.store(y_ptr + x_off, y, mask=(x_off < x_len))
 
 @triton.jit
 def quant_fp8_transpose(
@@ -839,26 +854,15 @@ def quant_fp8_transpose(
 def fused_input_to_float8_transpose(
     x: torch.Tensor, dtype: torch.dtype = torch.float8_e4m3fn
 ) -> Tuple[torch.Tensor, torch.Tensor]:
-    x = x.contiguous()
-    dim_1, dim_2, dim_3 = x.shape
+    x = x.transpose(0, 1).contiguous()
     finfo = torch.finfo(dtype)
     fp8_max = finfo.max
-    BLOCK1 = 1024
-    if x.numel() <= 4 * 1024:
-        BLOCK1 = 64
-    if x.numel() >= 1024 * 1024:
-        BLOCK1 = 4096
-    if x.numel() >= 8192 * 1024:
-        BLOCK1 = 16384
-    BLOCK2 = 1024
-    if x.numel() <= 4 * 1024:
-        BLOCK2 = 64
-    
+    BLOCK3 = 1024
+    y = torch.empty_like(x, device="cuda", dtype=dtype).contiguous()
     grid = lambda meta: (triton.cdiv(x.numel(), meta['BLOCK']), )
-    amax = torch.ones(1, dtype=torch.float, device="cuda")
-    y = torch.empty((dim_2, dim_1, dim_3), device="cuda", dtype=dtype).contiguous()
-    maxabs_kernel[grid](x, amax, x.numel(), BLOCK1)
-    scale = fp8_max / amax.to(x.dtype)
-    quant_fp8_transpose[grid](x, y, x.numel(), scale, fp8_max, BLOCK2, dim_1, dim_2, dim_3)
+    min_val, max_val = x.aminmax()
+    amax = torch.maximum(min_val.abs(), max_val.abs()).clamp(min=1e-12)
+    scale = fp8_max / amax
+    quant_fp8[grid](x, y, x.numel(), scale, fp8_max, BLOCK3)
 
     return y, 1.0 / scale.float()
