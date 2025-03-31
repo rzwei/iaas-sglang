@@ -6,6 +6,7 @@ from sglang.srt.layers.quantization.fp8_kernel import (
     per_token_group_quant_fp8,
     static_quant_fp8,
     w8a8_block_fp8_matmul,
+    fused_input_to_float8_transpose,
 )
 from sglang.srt.utils import (
     get_bool_env_var,
@@ -16,6 +17,8 @@ from sglang.srt.utils import (
 )
 
 use_vllm_cutlass_w8a8_fp8_kernel = get_bool_env_var("USE_VLLM_CUTLASS_W8A8_FP8_KERNEL")
+use_fp8_quant_transpose_triton_kernel = get_bool_env_var("USE_FP8_QUANT_TRANSPOSE_TRITON_KERNEL")
+
 
 _is_hip = is_hip()
 if _is_hip and get_bool_env_var("CK_MOE"):
@@ -147,6 +150,15 @@ def input_to_float8(
     scale = fp8_max / amax
     x_scl_sat = (x * scale).clamp(min=-fp8_max, max=fp8_max)
     return x_scl_sat.to(dtype).contiguous(), scale.float().reciprocal()
+
+
+def input_to_float8_transpose(
+    x: torch.Tensor, dtype: torch.dtype = torch.float8_e4m3fn
+) -> Tuple[torch.Tensor, torch.Tensor]:
+    if _is_cuda and use_fp8_quant_transpose_triton_kernel:
+        return fused_input_to_float8_transpose(x, dtype)
+    else:
+        return input_to_float8(x.transpose(0, 1), dtype)
 
 
 def block_quant_to_tensor_quant(

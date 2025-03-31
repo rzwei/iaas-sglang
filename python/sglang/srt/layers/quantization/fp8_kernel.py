@@ -798,3 +798,67 @@ def w8a8_block_fp8_matmul(
         )
 
     return C
+
+
+@triton.jit
+def maxabs_kernel(
+    x_ptr,
+    amax_ptr,
+    x_len,
+    BLOCK: tl.constexpr,
+):
+    pid = tl.program_id(axis=0)
+    offsets = tl.arange(0, BLOCK) + pid * BLOCK
+    mask = offsets < x_len
+    x = tl.load(x_ptr + offsets, mask=mask, other=0.0)
+    block_max = tl.max(tl.abs(x))
+    tl.atomic_max(amax_ptr, block_max.to(tl.float32))
+
+
+@triton.jit
+def quant_fp8_transpose(
+    x_ptr,
+    y_ptr,
+    x_len: tl.constexpr,
+    scale_ptr,
+    fp8_max,
+    BLOCK: tl.constexpr,
+    dim_1,
+    dim_2,
+    dim_3
+):
+    pid = tl.program_id(0)
+    x_off = tl.arange(0, BLOCK) + pid * BLOCK
+    x = tl.load(x_ptr + x_off, mask=(x_off < x_len), other=0.0)
+    scale = tl.load(scale_ptr)
+    y = tl.clamp(x * scale, min=-fp8_max, max=fp8_max)
+    y_off = (x_off // dim_3 % dim_2) * dim_1 * dim_3 + (x_off // (dim_2 * dim_3)) * dim_3 + x_off % dim_3
+    tl.store(y_ptr + y_off, y, mask=(y_off < x_len))
+    
+
+def fused_input_to_float8_transpose(
+    x: torch.Tensor, dtype: torch.dtype = torch.float8_e4m3fn
+) -> Tuple[torch.Tensor, torch.Tensor]:
+    x = x.contiguous()
+    dim_1, dim_2, dim_3 = x.shape
+    finfo = torch.finfo(dtype)
+    fp8_max = finfo.max
+    BLOCK1 = 1024
+    if x.numel() <= 4 * 1024:
+        BLOCK1 = 64
+    if x.numel() >= 1024 * 1024:
+        BLOCK1 = 4096
+    if x.numel() >= 8192 * 1024:
+        BLOCK1 = 16384
+    BLOCK2 = 1024
+    if x.numel() <= 4 * 1024:
+        BLOCK2 = 64
+    
+    grid = lambda meta: (triton.cdiv(x.numel(), meta['BLOCK']), )
+    amax = torch.ones(1, dtype=torch.float, device="cuda")
+    y = torch.empty((dim_2, dim_1, dim_3), device="cuda", dtype=dtype).contiguous()
+    maxabs_kernel[grid](x, amax, x.numel(), BLOCK1)
+    scale = fp8_max / amax.to(x.dtype)
+    quant_fp8_transpose[grid](x, y, x.numel(), scale, fp8_max, BLOCK2, dim_1, dim_2, dim_3)
+
+    return y, 1.0 / scale.float()

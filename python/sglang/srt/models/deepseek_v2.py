@@ -54,6 +54,7 @@ from sglang.srt.layers.quantization.base_config import QuantizationConfig
 from sglang.srt.layers.quantization.fp8_utils import (
     block_quant_to_tensor_quant,
     input_to_float8,
+    input_to_float8_transpose,
     normalize_e4m3fn_to_e4m3fnuz,
 )
 from sglang.srt.layers.quantization.int8_utils import (
@@ -655,8 +656,8 @@ class DeepseekV2AttentionMLA(nn.Module):
                 self.w_kc.to(torch.bfloat16) * self.w_scale,
             )
         elif self.w_kc.dtype == torch.float8_e4m3fn:
-            q_nope_val, q_nope_scale = input_to_float8(
-                q_nope.transpose(0, 1), torch.float8_e4m3fn
+            q_nope_val, q_nope_scale = input_to_float8_transpose(
+                q_nope, torch.float8_e4m3fn
             )
             q_nope_out = bmm_fp8(
                 q_nope_val, self.w_kc, q_nope_scale, self.w_scale, torch.bfloat16
@@ -686,8 +687,8 @@ class DeepseekV2AttentionMLA(nn.Module):
                 self.w_vc.to(torch.bfloat16) * self.w_scale,
             )
         elif self.w_vc.dtype == torch.float8_e4m3fn:
-            attn_output_val, attn_output_scale = input_to_float8(
-                attn_output.transpose(0, 1), torch.float8_e4m3fn
+            attn_output_val, attn_output_scale = input_to_float8_transpose(
+                attn_output, torch.float8_e4m3fn
             )
             attn_bmm_output = bmm_fp8(
                 attn_output_val,
@@ -733,8 +734,8 @@ class DeepseekV2AttentionMLA(nn.Module):
                 self.w_kc.to(torch.bfloat16) * self.w_scale,
             )
         elif self.w_kc.dtype == torch.float8_e4m3fn:
-            q_nope_val, q_nope_scale = input_to_float8(
-                q_nope.transpose(0, 1), torch.float8_e4m3fn
+            q_nope_val, q_nope_scale = input_to_float8_transpose(
+                q_nope, torch.float8_e4m3fn
             )
             q_nope_out = bmm_fp8(
                 q_nope_val, self.w_kc, q_nope_scale, self.w_scale, torch.bfloat16
@@ -829,8 +830,8 @@ class DeepseekV2AttentionMLA(nn.Module):
                 self.w_vc.to(torch.bfloat16) * self.w_scale,
             )
         elif self.w_vc.dtype == torch.float8_e4m3fn:
-            attn_output_val, attn_output_scale = input_to_float8(
-                attn_output.transpose(0, 1), torch.float8_e4m3fn
+            attn_output_val, attn_output_scale = input_to_float8_transpose(
+                attn_output, torch.float8_e4m3fn
             )
             attn_bmm_output = bmm_fp8(
                 attn_output_val,
