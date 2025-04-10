@@ -58,6 +58,7 @@ from sglang.srt.layers.quantization.fp8_utils import (
     block_quant_to_tensor_quant,
     input_to_float8,
     normalize_e4m3fn_to_e4m3fnuz,
+    per_tensor_fp8_quant,
 )
 from sglang.srt.layers.quantization.int8_utils import (
     block_dequant as int8_block_dequant,
@@ -811,7 +812,7 @@ class DeepseekV2AttentionMLA(nn.Module):
                 self.w_kc.to(torch.bfloat16) * self.w_scale,
             )
         elif self.w_kc.dtype == torch.float8_e4m3fn:
-            q_nope_val, q_nope_scale = input_to_float8(
+            q_nope_val, q_nope_scale = per_tensor_fp8_quant(
                 q_nope.transpose(0, 1), torch.float8_e4m3fn
             )
             q_nope_out = bmm_fp8(
@@ -842,7 +843,7 @@ class DeepseekV2AttentionMLA(nn.Module):
                 self.w_vc.to(torch.bfloat16) * self.w_scale,
             )
         elif self.w_vc.dtype == torch.float8_e4m3fn:
-            attn_output_val, attn_output_scale = input_to_float8(
+            attn_output_val, attn_output_scale = per_tensor_fp8_quant(
                 attn_output.transpose(0, 1), torch.float8_e4m3fn
             )
             attn_bmm_output = bmm_fp8(
@@ -889,7 +890,7 @@ class DeepseekV2AttentionMLA(nn.Module):
                 self.w_kc.to(torch.bfloat16) * self.w_scale,
             )
         elif self.w_kc.dtype == torch.float8_e4m3fn:
-            q_nope_val, q_nope_scale = input_to_float8(
+            q_nope_val, q_nope_scale = per_tensor_fp8_quant(
                 q_nope.transpose(0, 1), torch.float8_e4m3fn
             )
             q_nope_out = bmm_fp8(
@@ -985,7 +986,7 @@ class DeepseekV2AttentionMLA(nn.Module):
                 self.w_vc.to(torch.bfloat16) * self.w_scale,
             )
         elif self.w_vc.dtype == torch.float8_e4m3fn:
-            attn_output_val, attn_output_scale = input_to_float8(
+            attn_output_val, attn_output_scale = per_tensor_fp8_quant(
                 attn_output.transpose(0, 1), torch.float8_e4m3fn
             )
             attn_bmm_output = bmm_fp8(

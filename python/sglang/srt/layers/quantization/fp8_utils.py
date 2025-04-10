@@ -26,6 +26,7 @@ except ImportError:
     VLLM_AVAILABLE = False
 
 use_vllm_cutlass_w8a8_fp8_kernel = get_bool_env_var("USE_VLLM_CUTLASS_W8A8_FP8_KERNEL")
+use_fp8_quant_transpose_triton_kernel =  get_bool_env_var("USE_FP8_QUANT_TRANSPOSE_TRITON_KERNEL")
 
 _is_hip = is_hip()
 if _is_hip and get_bool_env_var("CK_MOE"):
@@ -33,7 +34,7 @@ if _is_hip and get_bool_env_var("CK_MOE"):
 
 _is_cuda = is_cuda()
 if _is_cuda:
-    from sgl_kernel import fp8_blockwise_scaled_mm, fp8_scaled_mm
+    from sgl_kernel import fp8_blockwise_scaled_mm, fp8_scaled_mm, sgl_per_tensor_quant_fp8
 
     from sglang.srt.custom_op import scaled_fp8_quant as sgl_scaled_fp8_quant
     from sglang.srt.layers.quantization.fp8_kernel import sglang_per_token_quant_fp8
@@ -175,6 +176,19 @@ def input_to_float8(
     scale = fp8_max / amax
     x_scl_sat = (x * scale).clamp(min=-fp8_max, max=fp8_max)
     return x_scl_sat.to(dtype).contiguous(), scale.float().reciprocal()
+
+
+def per_tensor_fp8_quant(
+    x: torch.Tensor, dtype: torch.dtype = torch.float8_e4m3fn
+) -> Tuple[torch.Tensor, torch.Tensor]:
+    if _is_cuda and use_fp8_quant_transpose_triton_kernel:
+        x = x.contiguous()
+        output = torch.empty_like(x, device=x.device, dtype=dtype)
+        scale = torch.ones(1, device=x.device, dtype=torch.float32)
+        sgl_per_tensor_quant_fp8(x, output, scale, is_static=False)
+        return output, scale
+    else:
+        return input_to_float8(x, dtype=dtype)
 
 
 def block_quant_to_tensor_quant(
