@@ -268,7 +268,7 @@ class DeepseekV2MoE(nn.Module):
                 async_finish=True,  # TODO
                 return_recv_hook=True,
             )
-
+    @torch.compiler.disable
     def forward(
         self, hidden_states: torch.Tensor, forward_mode: Optional[ForwardMode] = None
     ) -> torch.Tensor:
