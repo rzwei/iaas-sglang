@@ -179,9 +179,9 @@ def input_to_float8(
 
 
 def per_tensor_fp8_quant(
-    x: torch.Tensor, dtype: torch.dtype = torch.float8_e4m3fn
+    x: torch.Tensor, dtype: torch.dtype = torch.float8_e4m3fn, is_decode: bool = False
 ) -> Tuple[torch.Tensor, torch.Tensor]:
-    if _is_cuda and use_fp8_quant_transpose_triton_kernel:
+    if _is_cuda and use_fp8_quant_transpose_triton_kernel and not is_decode:
         x = x.contiguous()
         output = torch.empty_like(x, device=x.device, dtype=dtype)
         scale = torch.ones(1, device=x.device, dtype=torch.float32)
