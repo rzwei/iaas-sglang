@@ -41,7 +41,7 @@ from sglang.srt.layers.dp_attention import (
     tp_all_gather,
     tp_reduce_scatter,
 )
-from sglang.srt.layers.layernorm import RMSNorm
+from sglang.srt.layers.layernorm import RMSNorm, RMSNormQuant
 from sglang.srt.layers.linear import (
     ColumnParallelLinear,
     MergedColumnParallelLinear,
@@ -1096,8 +1096,8 @@ class DeepseekV2DecoderLayer(nn.Module):
         )
         self.is_last_layer = self.layer_id == config.num_hidden_layers - 1
 
-        self.input_layernorm = RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
-        self.post_attention_layernorm = RMSNorm(
+        self.input_layernorm = RMSNormQuant(config.hidden_size, eps=config.rms_norm_eps)
+        self.post_attention_layernorm = RMSNormQuant(
             config.hidden_size, eps=config.rms_norm_eps
         )
 

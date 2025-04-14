@@ -20,6 +20,7 @@ import torch
 import torch.nn as nn
 
 from sglang.srt.utils import is_cuda_available
+from vllm._custom_ops import rms_norm_dynamic_per_token_quant
 
 _is_cuda = is_cuda_available()
 
@@ -77,6 +78,31 @@ class RMSNorm(CustomOp):
         else:
             return x, residual
 
+
+class RMSNormQuant(RMSNorm):
+    def __init__(
+        self,
+        hidden_size: int,
+        eps: float = 1e-6,
+    ) -> None:
+        super().__init__(hidden_size, eps)
+    
+    def forward_cuda(
+        self,
+        x: torch.Tensor,
+        quant_dtype: Optional[torch.dtype] = torch.float8_e4m3fn,
+        residual: Optional[torch.Tensor] = None,
+    ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
+        out, residual = rms_norm_dynamic_per_token_quant(x,
+                                                  self.weight,
+                                                  self.variance_epsilon,
+                                                  quant_dtype,
+                                                  residual=residual)
+        if residual is not None:
+            return out, residual
+        else:
+            return out
+        
 
 class GemmaRMSNorm(CustomOp):
     def __init__(

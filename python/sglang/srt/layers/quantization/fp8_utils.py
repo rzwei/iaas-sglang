@@ -234,9 +234,12 @@ def apply_fp8_linear(
     if input_scale is not None:
         assert input_scale.numel() == 1
         # broadcast per-tensor scale to per-token scale when supporting cutlass
-        qinput, x_scale = static_quant_fp8(
-            input_2d, input_scale, repeat_scale=cutlass_fp8_supported
-        )
+        if input.dtype != torch.float8_e4m3fn:
+            qinput, x_scale = static_quant_fp8(
+                input_2d, input_scale, repeat_scale=cutlass_fp8_supported
+            )
+        else:
+            qinput, x_scale = input_2d, input_scale
     else:
         # default use per-token quantization if dynamic
         if _is_cuda:
