@@ -719,15 +719,16 @@ class DeepseekV2AttentionMLA(nn.Module):
         positions: torch.Tensor,
         hidden_states: torch.Tensor,
         forward_batch: ForwardBatch,
+        input_scale: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         if hidden_states.shape[0] == 0:
             assert (
                 not self.o_proj.reduce_results
             ), "short-circuiting allreduce will lead to hangs"
             return hidden_states
-
+        
         if self.no_absorb(forward_batch):
-            return self.forward_normal(positions, hidden_states, forward_batch)
+            return self.forward_normal(positions, hidden_states, forward_batch, input_scale)
         else:
             if _is_hip:
                 if (
@@ -740,16 +741,17 @@ class DeepseekV2AttentionMLA(nn.Module):
                 else:
                     return self.forward_absorb(positions, hidden_states, forward_batch)
             else:
-                return self.forward_absorb(positions, hidden_states, forward_batch)
+                return self.forward_absorb(positions, hidden_states, forward_batch, input_scale)
 
     def forward_normal(
         self,
         positions: torch.Tensor,
         hidden_states: torch.Tensor,
         forward_batch: ForwardBatch,
+        input_scale: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         if self.q_lora_rank is not None:
-            q = self.q_a_proj(hidden_states)[0]
+            q = self.q_a_proj(hidden_states, input_scale=input_scale)[0]
             q = self.q_a_layernorm(q)
             q = self.q_b_proj(q)[0].view(-1, self.num_local_heads, self.qk_head_dim)
         else:
@@ -757,7 +759,7 @@ class DeepseekV2AttentionMLA(nn.Module):
                 -1, self.num_local_heads, self.qk_head_dim
             )
         _, q_pe = q.split([self.qk_nope_head_dim, self.qk_rope_head_dim], dim=-1)
-        latent_cache = self.kv_a_proj_with_mqa(hidden_states)[0]
+        latent_cache = self.kv_a_proj_with_mqa(hidden_states, input_scale=input_scale)[0]
         kv_a, _ = latent_cache.split([self.kv_lora_rank, self.qk_rope_head_dim], dim=-1)
         latent_cache = latent_cache.unsqueeze(1)
         kv_a = self.kv_a_layernorm(kv_a.contiguous())
@@ -789,13 +791,14 @@ class DeepseekV2AttentionMLA(nn.Module):
         positions: torch.Tensor,
         hidden_states: torch.Tensor,
         forward_batch: ForwardBatch,
+        input_scale: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         q_len = hidden_states.shape[0]
         q_input = hidden_states.new_empty(
             q_len, self.num_local_heads, self.kv_lora_rank + self.qk_rope_head_dim
         )
         if self.q_lora_rank is not None:
-            q = self.q_a_proj(hidden_states)[0]
+            q = self.q_a_proj(hidden_states, input_scale=input_scale)[0]
             q = self.q_a_layernorm(q)
             q = self.q_b_proj(q)[0].view(-1, self.num_local_heads, self.qk_head_dim)
         else:
@@ -821,7 +824,7 @@ class DeepseekV2AttentionMLA(nn.Module):
             q_nope_out = torch.bmm(q_nope.transpose(0, 1), self.w_kc)
         q_input[..., : self.kv_lora_rank] = q_nope_out.transpose(0, 1)
 
-        latent_cache = self.kv_a_proj_with_mqa(hidden_states)[0]
+        latent_cache = self.kv_a_proj_with_mqa(hidden_states, input_scale=input_scale)[0]
         v_input = latent_cache[..., : self.kv_lora_rank]
         v_input = self.kv_a_layernorm(v_input.contiguous()).unsqueeze(1)
         k_input = latent_cache.unsqueeze(1)
@@ -1097,7 +1100,7 @@ class DeepseekV2DecoderLayer(nn.Module):
         self.is_last_layer = self.layer_id == config.num_hidden_layers - 1
 
         self.input_layernorm = RMSNormQuant(config.hidden_size, eps=config.rms_norm_eps)
-        self.post_attention_layernorm = RMSNormQuant(
+        self.post_attention_layernorm = RMSNorm(
             config.hidden_size, eps=config.rms_norm_eps
         )
 
@@ -1130,9 +1133,9 @@ class DeepseekV2DecoderLayer(nn.Module):
         else:
             if residual is None:
                 residual = hidden_states
-                hidden_states = self.input_layernorm(hidden_states)
+                scales, hidden_states = self.input_layernorm(hidden_states)
             else:
-                hidden_states, residual = self.input_layernorm(hidden_states, residual)
+                scales, hidden_states, residual = self.input_layernorm(hidden_states, residual)
 
             assert not (
                 self.attn_tp_size != 1 and self.input_is_scattered
@@ -1143,6 +1146,7 @@ class DeepseekV2DecoderLayer(nn.Module):
                 positions=positions,
                 hidden_states=hidden_states,
                 forward_batch=forward_batch,
+                input_scale=scales,
             )
 
         # Gather

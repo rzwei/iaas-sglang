@@ -169,6 +169,7 @@ class W8A8Fp8LinearMethod(LinearMethodBase):
         layer: torch.nn.Module,
         x: torch.Tensor,
         bias: Optional[torch.Tensor] = None,
+        input_scale: Optional[torch.Tensor] = None,
     ):
         return apply_fp8_linear(
             x,
@@ -176,4 +177,5 @@ class W8A8Fp8LinearMethod(LinearMethodBase):
             layer.weight_scale,
             bias=bias,
             cutlass_fp8_supported=self.cutlass_fp8_supported,
+            input_scale=input_scale,
         )

@@ -402,6 +402,7 @@ class Fp8LinearMethod(LinearMethodBase):
         layer: torch.nn.Module,
         x: torch.Tensor,
         bias: Optional[torch.Tensor] = None,
+        input_scale: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
 
         if self.use_marlin:

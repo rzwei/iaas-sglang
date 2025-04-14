@@ -92,16 +92,16 @@ class RMSNormQuant(RMSNorm):
         x: torch.Tensor,
         quant_dtype: Optional[torch.dtype] = torch.float8_e4m3fn,
         residual: Optional[torch.Tensor] = None,
-    ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
-        out, residual = rms_norm_dynamic_per_token_quant(x,
+    ):
+        out, scales = rms_norm_dynamic_per_token_quant(x,
                                                   self.weight,
                                                   self.variance_epsilon,
                                                   quant_dtype,
                                                   residual=residual)
         if residual is not None:
-            return out, residual
+            return scales, out, residual
         else:
-            return out
+            return scales, out
         
 
 class GemmaRMSNorm(CustomOp):
