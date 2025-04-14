@@ -667,7 +667,7 @@ def grouped_gemm_triton(
     # Reduce block size to prevent L40 shared memory overflow.
     config = {
         "BLOCK_SIZE_M": 64,
-        "BLOCK_SIZE_N": 32,
+        "BLOCK_SIZE_N": 64,
         "BLOCK_SIZE_K": 128,
     }
 
