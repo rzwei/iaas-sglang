@@ -4,6 +4,9 @@ from typing import Callable, List, Optional, Tuple
 import torch
 from torch.nn import Module
 
+import torch._dynamo
+torch._dynamo.config.suppress_errors = True
+
 try:
     from deep_gemm import (
         get_col_major_tma_aligned_tensor,
