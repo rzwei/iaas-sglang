@@ -220,24 +220,33 @@ def biased_grouped_topk(
     n_share_experts_fusion: int = 0,
     routed_scaling_factor: float = 2.5,
 ):
-    biased_grouped_topk_fn = (
-        torch.compile(
-            biased_grouped_topk_impl, dynamic=True, backend=get_compiler_backend()
-        )
-        if compiled
-        else biased_grouped_topk_impl
-    )
-    return biased_grouped_topk_fn(
-        hidden_states,
+    # biased_grouped_topk_fn = (
+    #     torch.compile(
+    #         biased_grouped_topk_impl, dynamic=True, backend=get_compiler_backend()
+    #     )
+    #     if compiled
+    #     else biased_grouped_topk_impl
+    # )
+    # return biased_grouped_topk_fn(
+    #     hidden_states,
+    #     gating_output,
+    #     correction_bias,
+    #     topk,
+    #     renormalize,
+    #     num_expert_group,
+    #     topk_group,
+    #     n_share_experts_fusion=n_share_experts_fusion,
+    # )
+    from sgl_kernel import moe_fused_gate
+    topk_weights, topk_ids = moe_fused_gate(
         gating_output,
         correction_bias,
-        topk,
-        renormalize,
         num_expert_group,
         topk_group,
-        n_share_experts_fusion=n_share_experts_fusion,
-        routed_scaling_factor=routed_scaling_factor,
+        topk,
+        n_share_experts_fusion,
     )
+    return topk_weights.to(torch.float32), topk_ids.to(torch.int32)
 
 
 def select_experts(
