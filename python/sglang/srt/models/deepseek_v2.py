@@ -188,12 +188,14 @@ class DeepseekV2MoE(nn.Module):
         config: PretrainedConfig,
         quant_config: Optional[QuantizationConfig] = None,
         prefix: str = "",
+        is_nextn: bool = False,
     ):
         super().__init__()
         self.tp_size = get_tensor_model_parallel_world_size()
         self.routed_scaling_factor = config.routed_scaling_factor
         self.n_shared_experts = config.n_shared_experts
         self.n_share_experts_fusion = global_server_args_dict["n_share_experts_fusion"]
+        self.is_nextn = is_nextn
 
         if self.tp_size > config.n_routed_experts:
             raise ValueError(
@@ -214,6 +216,8 @@ class DeepseekV2MoE(nn.Module):
             if global_server_args_dict["enable_deepep_moe"]
             else (EPMoE if global_server_args_dict["enable_ep_moe"] else FusedMoE)
         )
+        if self.is_nextn:
+            MoEImpl = EPMoE if (global_server_args_dict["enable_ep_moe"] or global_server_args_dict["enable_deepep_moe"]) else FusedMoE
 
         self.experts = MoEImpl(
             num_experts=config.n_routed_experts + self.n_share_experts_fusion,
@@ -230,7 +234,7 @@ class DeepseekV2MoE(nn.Module):
             prefix=add_prefix("experts", prefix),
             **(
                 dict(deepep_mode=DeepEPMode[global_server_args_dict["deepep_mode"]])
-                if global_server_args_dict["enable_deepep_moe"]
+                if (global_server_args_dict["enable_deepep_moe"] and not self.is_nextn)
                 else {}
             ),
         )
@@ -238,7 +242,7 @@ class DeepseekV2MoE(nn.Module):
         if config.n_shared_experts is not None and self.n_share_experts_fusion == 0:
             intermediate_size = config.moe_intermediate_size * config.n_shared_experts
             # disable tp for shared experts when enable deepep moe
-            if not global_server_args_dict["enable_deepep_moe"]:
+            if (not global_server_args_dict["enable_deepep_moe"]) or self.is_nextn:
                 self.shared_experts = DeepseekV2MLP(
                     hidden_size=config.hidden_size,
                     intermediate_size=intermediate_size,
@@ -259,7 +263,7 @@ class DeepseekV2MoE(nn.Module):
                     tp_size=1,
                 )
 
-        if global_server_args_dict["enable_deepep_moe"]:
+        if global_server_args_dict["enable_deepep_moe"] and not self.is_nextn:
             # TODO: we will support tp < ep in the future
             self.ep_size = get_tensor_model_parallel_world_size()
             self.num_experts = config.n_routed_experts
@@ -289,7 +293,7 @@ class DeepseekV2MoE(nn.Module):
     def forward(
         self, hidden_states: torch.Tensor, forward_mode: Optional[ForwardMode] = None
     ) -> torch.Tensor:
-        if not global_server_args_dict["enable_deepep_moe"]:
+        if (not global_server_args_dict["enable_deepep_moe"]) or self.is_nextn:
             return self.forward_normal(hidden_states)
         else:
             return self.forward_deepep(hidden_states, forward_mode)
@@ -1117,6 +1121,7 @@ class DeepseekV2DecoderLayer(nn.Module):
                 config=config,
                 quant_config=quant_config,
                 prefix=add_prefix("mlp", prefix),
+                is_nextn=is_nextn,
             )
         else:
             if self._enable_moe_dense_fully_dp():
@@ -1160,6 +1165,7 @@ class DeepseekV2DecoderLayer(nn.Module):
             or (DeepseekV2DecoderLayer._enable_moe_dense_fully_dp() and not is_sparse)
             else _FFNInputMode.FULL
         )
+        ffn_input_mode = (_FFNInputMode.FULL if is_nextn else ffn_input_mode)
         return _DecoderLayerInfo(is_sparse=is_sparse, ffn_input_mode=ffn_input_mode)
 
     def forward(
@@ -1406,12 +1412,14 @@ class DeepseekV2ForCausalLM(nn.Module):
         config: PretrainedConfig,
         quant_config: Optional[QuantizationConfig] = None,
         prefix: str = "",
+        is_nextn: bool = False,
     ) -> None:
         super().__init__()
         self.config = config
         self.tp_size = get_tensor_model_parallel_world_size()
         self.quant_config = quant_config
         self.n_share_experts_fusion = global_server_args_dict["n_share_experts_fusion"]
+        self.is_nextn = is_nextn
         if self.n_share_experts_fusion > 0:
             # Only Deepseek V3/R1 can use shared experts fusion optimization now.
             if (
@@ -1432,7 +1440,7 @@ class DeepseekV2ForCausalLM(nn.Module):
                 torch.cuda.get_device_capability("cuda") >= (9, 0)
                 and self.config.architectures[0] == "DeepseekV3ForCausalLM"
                 and self.config.n_routed_experts == 256
-                and (not global_server_args_dict["enable_deepep_moe"])
+                and ((not global_server_args_dict["enable_deepep_moe"]) or is_nextn)
             ):
                 self.n_share_experts_fusion = self.tp_size
                 global_server_args_dict["n_share_experts_fusion"] = self.tp_size
@@ -1641,6 +1649,9 @@ class DeepseekV2ForCausalLM(nn.Module):
             if global_server_args_dict["enable_deepep_moe"]
             else (EPMoE if global_server_args_dict["enable_ep_moe"] else FusedMoE)
         )
+        if self.is_nextn:
+            MoEImpl = EPMoE if (global_server_args_dict["enable_ep_moe"] or global_server_args_dict["enable_deepep_moe"]) else FusedMoE
+
         expert_params_mapping = MoEImpl.make_expert_params_mapping(
             ckpt_gate_proj_name="gate_proj",
             ckpt_down_proj_name="down_proj",

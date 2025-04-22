@@ -57,6 +57,7 @@ class DeepseekModelNextN(nn.Module):
         config: PretrainedConfig,
         quant_config: Optional[QuantizationConfig] = None,
         prefix: str = "",
+        is_nextn: bool = True,
     ) -> None:
         super().__init__()
         self.vocab_size = config.vocab_size
@@ -77,7 +78,7 @@ class DeepseekModelNextN(nn.Module):
             config,
             0,
             quant_config=quant_config,
-            is_nextn=True,
+            is_nextn=is_nextn,
             prefix=add_prefix("decoder", prefix),
         )
 
@@ -131,6 +132,7 @@ class DeepseekV3ForCausalLMNextN(DeepseekV3ForCausalLM):
         config: PretrainedConfig,
         quant_config: Optional[QuantizationConfig] = None,
         prefix: str = "",
+        is_nextn: bool = True,
     ) -> None:
         nn.Module.__init__(self)
         self.config = config
@@ -185,7 +187,7 @@ class DeepseekV3ForCausalLMNextN(DeepseekV3ForCausalLM):
 
         # Params for weights, fp8 weight scales, fp8 activation scales
         # (param_name, weight_name, expert_id, shard_id)
-        MoEImpl = EPMoE if global_server_args_dict["enable_ep_moe"] else FusedMoE
+        MoEImpl = EPMoE 
         expert_params_mapping = MoEImpl.make_expert_params_mapping(
             ckpt_gate_proj_name="gate_proj",
             ckpt_down_proj_name="down_proj",
