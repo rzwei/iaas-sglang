@@ -19,6 +19,7 @@ from sglang.srt.layers.moe.ep_moe.kernels import (
     deepep_run_moe_deep_preprocess,
 )
 from sglang.srt.model_executor.forward_batch_info import ForwardMode
+import logging
 
 
 class DeepEPDispatchMode(IntEnum):
@@ -139,7 +140,7 @@ class _DeepEPDispatcherImplBase:
         self.deepep_mode = deepep_mode
 
         self.params_bytes = 2
-        self.num_max_dispatch_tokens_per_rank = 128
+        self.num_max_dispatch_tokens_per_rank = 512
 
         self.handle = None
 
@@ -581,6 +582,9 @@ class DeepEPDispatcher:
         topk_weights: torch.Tensor,
         forward_mode: ForwardMode = None,
     ):
+        logging.info(f"DeepEP dispatch input sizes - hidden_states: {hidden_states.size()}, "
+            f"topk_idx: {topk_idx.size()}, num_max_dispatch_tokens_per_rank: {self._low_latency_dispatcher.num_max_dispatch_tokens_per_rank}")
+
         inner_state = self._get_impl(forward_mode).dispatch_a(
             hidden_states=hidden_states,
             topk_idx=topk_idx,
