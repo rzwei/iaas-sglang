@@ -60,3 +60,5 @@ def moe_fused_gate(
         n_share_experts_fusion,
         routed_scaling_factor,
     )
+def deepseekv3_fused_gate(input_tensor, bias):
+    return torch.ops.sgl_kernel.deepseekv3_fused_gate(input_tensor, bias)

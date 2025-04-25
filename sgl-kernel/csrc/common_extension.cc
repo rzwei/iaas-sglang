@@ -228,6 +228,8 @@ TORCH_LIBRARY_FRAGMENT(sgl_kernel, m) {
       "bool is_causal, float softcap, bool return_softmax, "
       "Generator? gen) -> Tensor[]");
   m.impl("varlen_fwd_sparse", torch::kCUDA, &flash::mha_varlen_fwd_sparse);
+  m.def("deepseekv3_fused_gate(Tensor input, Tensor bias) -> (Tensor[])");
+  m.impl("deepseekv3_fused_gate", torch::kCUDA, &deepseekv3_fused_gate);
 }
 
 REGISTER_EXTENSION(common_ops)

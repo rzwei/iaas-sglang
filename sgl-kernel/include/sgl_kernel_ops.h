@@ -209,6 +209,8 @@ std::vector<at::Tensor> moe_fused_gate(
     int64_t n_share_experts_fusion,
     double routed_scaling_factor);
 
+std::vector<at::Tensor> deepseekv3_fused_gate(at::Tensor& input, at::Tensor& bias);
+
 /*
  * From csrc/speculative
  */

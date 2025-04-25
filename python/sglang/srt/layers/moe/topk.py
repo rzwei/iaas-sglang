@@ -34,6 +34,8 @@ if _is_cuda or _is_hip:
 
 expert_distribution_recorder = ExpertDistributionRecorder()
 
+from sgl_kernel import deepseekv3_fused_gate
+
 
 def fused_topk_native(
     hidden_states: torch.Tensor,
@@ -286,17 +288,11 @@ def select_experts(
                 routed_scaling_factor=routed_scaling_factor,
             )
         else:
-            topk_weights, topk_ids = biased_grouped_topk(
-                hidden_states=hidden_states,
-                gating_output=router_logits,
-                correction_bias=correction_bias,
-                topk=top_k,
-                renormalize=renormalize,
-                num_expert_group=num_expert_group,
-                topk_group=topk_group,
-                n_share_experts_fusion=n_share_experts_fusion,
-                routed_scaling_factor=routed_scaling_factor,
+            topk_weights, topk_ids = deepseekv3_fused_gate(
+                router_logits,
+                correction_bias,
             )
+
     elif torch_native and custom_routing_function is None:
         topk_weights, topk_ids = fused_topk_native(
             hidden_states=hidden_states,
