@@ -41,6 +41,7 @@ from sglang.srt.conversation import (
 )
 from sglang.srt.function_call_parser import FunctionCallParser
 from sglang.srt.managers.io_struct import EmbeddingReqInput, GenerateReqInput
+from sglang.srt.observability import accumulate_stream_items, otel_provider
 from sglang.srt.openai_api.protocol import (
     BatchRequest,
     BatchResponse,
@@ -1426,6 +1427,7 @@ async def v1_chat_completions(
     all_requests = [ChatCompletionRequest(**request_json)]
     created = int(time.time())
     adapted_request, request = v1_chat_generate_request(all_requests, tokenizer_manager)
+    start_time = time.time()
 
     if adapted_request.stream:
         parser_dict = {}
@@ -1438,6 +1440,14 @@ async def v1_chat_completions(
             prompt_tokens = {}
             completion_tokens = {}
             cached_tokens = {}
+            time_of_first_token = {}
+            usage = {}
+            complete_response = {
+                "choices": [],
+                "model": "",
+                "usage": None,
+                "error": None,
+            }
             try:
                 async for content in tokenizer_manager.generate_request(
                     adapted_request, raw_request
@@ -1503,6 +1513,7 @@ async def v1_chat_completions(
                     )
 
                     if is_first:
+                        time_of_first_token = time.time()
                         # First chunk with role
                         is_first = False
                         delta = DeltaMessage(role="assistant")
@@ -1524,6 +1535,7 @@ async def v1_chat_completions(
                             model=request.model,
                         )
                         yield f"data: {chunk.model_dump_json()}\n\n"
+                        accumulate_stream_items(chunk, complete_response)
 
                     text = content["text"]
                     delta = text[len(stream_buffer) :]
@@ -1562,6 +1574,7 @@ async def v1_chat_completions(
                                 model=request.model,
                             )
                             yield f"data: {chunk.model_dump_json()}\n\n"
+                            accumulate_stream_items(chunk, complete_response)
                         if (delta and len(delta) == 0) or not delta:
                             stream_buffers[index] = new_stream_buffer
                             is_firsts[index] = is_first
@@ -1594,6 +1607,7 @@ async def v1_chat_completions(
                                 model=request.model,
                             )
                             yield f"data: {chunk.model_dump_json()}\n\n"
+                            accumulate_stream_items(chunk, complete_response)
 
                         # 2) if we found calls, we output them as separate chunk(s)
                         for call_item in calls:
@@ -1647,6 +1661,7 @@ async def v1_chat_completions(
                                 model=request.model,
                             )
                             yield f"data: {chunk.model_dump_json()}\n\n"
+                            accumulate_stream_items(chunk, complete_response)
 
                         stream_buffers[index] = new_stream_buffer
                         is_firsts[index] = is_first
@@ -1682,6 +1697,7 @@ async def v1_chat_completions(
                             yield f"data: {chunk.model_dump_json()}\n\n"
                             stream_buffers[index] = new_stream_buffer
                             is_firsts[index] = is_first
+                            accumulate_stream_items(chunk, complete_response)
                 if finish_reason_type == "stop" and request.tool_choice != "none":
                     parser = FunctionCallParser(
                         tools=request.tools,
@@ -1731,7 +1747,20 @@ async def v1_chat_completions(
                     usage=usage,
                 )
                 yield f"data: {final_usage_chunk.model_dump_json()}\n\n"
+                otel_provider.record(
+                    "sglang_chat_completion",
+                    raw_request.headers,
+                    request,
+                    complete_response,
+                    usage,
+                    start_time,
+                    time_of_first_token=time_of_first_token,
+                    stream=True,
+                )
             except ValueError as e:
+                otel_provider.recordException(
+                    "sglang_chat_completion", raw_request.headers, request, e
+                )
                 error = create_streaming_error_response(str(e))
                 yield f"data: {error}\n\n"
             yield "data: [DONE]\n\n"
@@ -1748,6 +1777,9 @@ async def v1_chat_completions(
             adapted_request, raw_request
         ).__anext__()
     except ValueError as e:
+        otel_provider.recordException(
+            "sglang_chat_completion", raw_request.headers, request, e
+        )
         return create_error_response(str(e))
     if not isinstance(ret, list):
         ret = [ret]
@@ -1759,6 +1791,16 @@ async def v1_chat_completions(
         cache_report=tokenizer_manager.server_args.enable_cache_report,
         tool_call_parser=tokenizer_manager.server_args.tool_call_parser,
         reasoning_parser=tokenizer_manager.server_args.reasoning_parser,
+    )
+
+    otel_provider.record(
+        "sglang_chat_completion",
+        raw_request.headers,
+        request,
+        response,
+        response.usage,
+        start_time,
+        stream=False,
     )
 
     return response
