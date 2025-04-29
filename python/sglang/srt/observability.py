@@ -37,12 +37,14 @@ try:
         TraceContextTextMapPropagator,
     )
     from opentelemetry.trace.status import Status, StatusCode
+
     _is_otel_imported = True
 except ImportError:
     # Capture and format traceback to provide detailed context for the import
     # error. Only the string representation of the error is retained to avoid
     # memory leaks.
     import traceback
+
     otel_import_error_traceback = traceback.format_exc()
 
     class Context:  # type: ignore
@@ -69,6 +71,7 @@ except ImportError:
     class TraceContextTextMapPropagator:  # type: ignore
         pass
 
+
 def is_otel_available() -> bool:
     return _is_otel_imported
 
@@ -78,7 +81,8 @@ def init_tracer(instrumenting_module_name: str) -> Optional[Tracer]:
         raise ValueError(
             "OpenTelemetry is not available. Unable to initialize "
             "a tracer. Ensure OpenTelemetry packages are installed. "
-            f"Original error:\n{otel_import_error_traceback}")
+            f"Original error:\n{otel_import_error_traceback}"
+        )
     trace_provider = TracerProvider()
 
     span_exporter = get_span_exporter()
@@ -89,6 +93,7 @@ def init_tracer(instrumenting_module_name: str) -> Optional[Tracer]:
 
     tracer = get_tracer(instrumenting_module_name)
     return tracer
+
 
 def get_span_exporter():
     protocol = os.environ.get(OTEL_EXPORTER_OTLP_TRACES_PROTOCOL, "grpc")
@@ -101,19 +106,22 @@ def get_span_exporter():
             OTLPSpanExporter,  # type: ignore
         )
     else:
-        raise ValueError(
-            f"Unsupported OTLP protocol '{protocol}' is configured")
+        raise ValueError(f"Unsupported OTLP protocol '{protocol}' is configured")
 
     return OTLPSpanExporter()
+
 
 def init_metrics(instrumenting_module_name: str) -> Optional[Meter]:
     if not is_otel_available():
         raise ValueError(
             "OpenTelemetry is not available. Unable to initialize "
             "a meter. Ensure OpenTelemetry packages are installed. "
-            f"Original error:\n{otel_import_error_traceback}")
+            f"Original error:\n{otel_import_error_traceback}"
+        )
     metric_exporter = get_metrics_exporter()
-    reader = PeriodicExportingMetricReader(metric_exporter, export_interval_millis=30_000)
+    reader = PeriodicExportingMetricReader(
+        metric_exporter, export_interval_millis=30_000
+    )
     metrics_provider = MeterProvider(metric_readers=[reader])
     set_meter_provider(metrics_provider)
 
@@ -122,6 +130,7 @@ def init_metrics(instrumenting_module_name: str) -> Optional[Meter]:
     init_genai_metrics(meter)
     SystemMetricsInstrumentor().instrument()
     return meter
+
 
 def get_metrics_exporter():
     protocol = os.environ.get(OTEL_EXPORTER_OTLP_METRICS_PROTOCOL, "grpc")
@@ -134,13 +143,12 @@ def get_metrics_exporter():
             OTLPMetricExporter,  # type: ignore
         )
     else:
-        raise ValueError(
-            f"Unsupported OTLP protocol '{protocol}' is configured")
+        raise ValueError(f"Unsupported OTLP protocol '{protocol}' is configured")
 
     return OTLPMetricExporter()
 
-def extract_trace_context(
-        headers: Optional[Mapping[str, str]]) -> Optional[Context]:
+
+def extract_trace_context(headers: Optional[Mapping[str, str]]) -> Optional[Context]:
     if is_otel_available():
         headers = headers or {}
         return TraceContextTextMapPropagator().extract(headers)
@@ -151,6 +159,7 @@ def extract_trace_context(
 def extract_trace_headers(headers: Mapping[str, str]) -> Mapping[str, str]:
 
     return {h: headers[h] for h in TRACE_HEADERS if h in headers}
+
 
 class Meters:
     LLM_GENERATION_CHOICES = "gen_ai.client.generation.choices"
@@ -166,9 +175,7 @@ class Meters:
     LLM_STREAMING_TIME_PER_OUTPUT_TOKEN = (
         "gen_ai.chat_completions.streaming_time_per_output_token"
     )
-    LLM_CHAT_COUNT = (
-        "gen_ai.chat.count"
-    )
+    LLM_CHAT_COUNT = "gen_ai.chat.count"
 
     LLM_EMBEDDINGS_EXCEPTIONS = "gen_ai.embeddings.exceptions"
     LLM_EMBEDDINGS_VECTOR_SIZE = "gen_ai.embeddings.vector_size"
@@ -195,6 +202,7 @@ class Meters:
     streaming_time_to_first_token = None
     streaming_time_to_generate = None
     streaming_time_per_output_token = None
+
 
 def init_genai_metrics(meter: Meter) -> None:
     if Meters.is_metrics_inited:
@@ -248,6 +256,7 @@ def init_genai_metrics(meter: Meter) -> None:
     except Exception as ex:  # pylint: disable=broad-except
         logger.warning("Failed to init genai metrics, error: %s", str(ex))
 
+
 def set_choice_counter_metrics(choices, shared_attributes):
     # choice_counter.add(len(choices), attributes=shared_attributes)
     if Meters.is_metrics_inited:
@@ -257,7 +266,9 @@ def set_choice_counter_metrics(choices, shared_attributes):
             if choice.get("finish_reason"):
                 attributes_with_reason = {
                     **shared_attributes,
-                    SpanAttributes.GEN_AI_RESPONSE_FINISH_REASON: choice.get("finish_reason"),
+                    SpanAttributes.GEN_AI_RESPONSE_FINISH_REASON: choice.get(
+                        "finish_reason"
+                    ),
                 }
             else:
                 attributes_with_reason = shared_attributes
@@ -272,7 +283,10 @@ def set_token_counter_metrics(usage, shared_attributes):
                     **shared_attributes,
                     SpanAttributes.GEN_AI_TOKEN_TYPE: _token_type(name),
                 }
-                Meters.tokens_histogram.record(val, attributes=attributes_with_token_type)
+                Meters.tokens_histogram.record(
+                    val, attributes=attributes_with_token_type
+                )
+
 
 def metric_shared_attributes(
     response_model: str, operation: str, is_streaming: bool = False
@@ -284,6 +298,7 @@ def metric_shared_attributes(
         "stream": is_streaming,
     }
 
+
 def _token_type(token_type: str):
     if token_type == "prompt_tokens":
         return "input"
@@ -294,6 +309,7 @@ def _token_type(token_type: str):
 
     return None
 
+
 class SpanAttributes:
     # Attribute names copied from here to avoid version conflicts:
     # https://github.com/open-telemetry/semantic-conventions/blob/main/docs/gen-ai/gen-ai-spans.md
@@ -303,7 +319,9 @@ class SpanAttributes:
     GEN_AI_SYSTEM = "gen_ai.system"
     GEN_AI_PROMPTS = "gen_ai.prompt"
     GEN_AI_COMPLETIONS = "gen_ai.completion"
-    GEN_AI_USAGE_CACHE_CREATION_INPUT_TOKENS = "gen_ai.usage.cache_creation_input_tokens"
+    GEN_AI_USAGE_CACHE_CREATION_INPUT_TOKENS = (
+        "gen_ai.usage.cache_creation_input_tokens"
+    )
     GEN_AI_USAGE_CACHE_READ_INPUT_TOKENS = "gen_ai.usage.cache_read_input_tokens"
     GEN_AI_TOKEN_TYPE = "gen_ai.token.type"
     GEN_AI_REQUEST_MAX_TOKENS = "gen_ai.request.max_tokens"
@@ -327,12 +345,10 @@ class SpanAttributes:
     GEN_AI_LATENCY_E2E = "gen_ai.latency.e2e"
     GEN_AI_LATENCY_TIME_IN_SCHEDULER = "gen_ai.latency.time_in_scheduler"
     # Time taken in the forward pass for this across all workers
-    GEN_AI_LATENCY_TIME_IN_MODEL_FORWARD = (
-        "gen_ai.latency.time_in_model_forward")
+    GEN_AI_LATENCY_TIME_IN_MODEL_FORWARD = "gen_ai.latency.time_in_model_forward"
     # Time taken in the model execute function. This will include model
     # forward, block/sync across workers, cpu-gpu sync time and sampling time.
-    GEN_AI_LATENCY_TIME_IN_MODEL_EXECUTE = (
-        "gen_ai.latency.time_in_model_execute")
+    GEN_AI_LATENCY_TIME_IN_MODEL_EXECUTE = "gen_ai.latency.time_in_model_execute"
     GEN_AI_REQUEST_TYPE = "gen_ai.request.type"
     # TTFT TPOP span
     GEN_AI_STREAMING_TIME_TO_FIRST_TOKEN = (
@@ -350,12 +366,14 @@ class LLMRequestTypeValues(Enum):
     EMBEDDING = "embedding"
     UNKNOWN = "unknown"
 
+
 def contains_trace_headers(headers: Mapping[str, str]) -> bool:
     return any(h in headers for h in TRACE_HEADERS)
 
+
 def log_tracing_disabled_warning() -> None:
-    logger.warning(
-        "Received a request with trace context but tracing is disabled")
+    logger.warning("Received a request with trace context but tracing is disabled")
+
 
 def set_prompts(span, messages):
     if not span.is_recording() or messages is None:
@@ -375,6 +393,7 @@ def set_prompts(span, messages):
     except Exception as ex:  # pylint: disable=broad-except
         logger.warning("Failed to set prompts for openai span, error: %s", str(ex))
 
+
 def set_request_attributes(span, raw_request):
     if not span.is_recording():
         return
@@ -382,14 +401,18 @@ def set_request_attributes(span, raw_request):
     try:
         # _set_api_attributes(span)
         _set_span_attribute(span, SpanAttributes.GEN_AI_SYSTEM, "sglang")
-        _set_span_attribute(span, SpanAttributes.GEN_AI_REQUEST_MODEL, raw_request.model)
+        _set_span_attribute(
+            span, SpanAttributes.GEN_AI_REQUEST_MODEL, raw_request.model
+        )
         _set_span_attribute(
             span, SpanAttributes.GEN_AI_REQUEST_MAX_TOKENS, raw_request.max_tokens
         )
         _set_span_attribute(
             span, SpanAttributes.GEN_AI_REQUEST_TEMPERATURE, raw_request.temperature
         )
-        _set_span_attribute(span, SpanAttributes.GEN_AI_REQUEST_TOP_P, raw_request.top_p)
+        _set_span_attribute(
+            span, SpanAttributes.GEN_AI_REQUEST_TOP_P, raw_request.top_p
+        )
         _set_span_attribute(
             span, SpanAttributes.GEN_AI_FREQUENCY_PENALTY, raw_request.frequency_penalty
         )
@@ -404,6 +427,7 @@ def set_request_attributes(span, raw_request):
         logger.warning(
             "Failed to set input attributes for request span, error: %s", str(ex)
         )
+
 
 def set_completions(span, choices):
     if choices is None:
@@ -448,11 +472,13 @@ def set_completions(span, choices):
                 tool_calls[0].get("function").get("arguments"),
             )
 
+
 def _set_span_attribute(span, name, value):
     if value is not None:
         if value != "":
             span.set_attribute(name, value)
     return
+
 
 def set_response_attributes(span, response, usage):
     if not span.is_recording():
@@ -486,12 +512,14 @@ def set_response_attributes(span, response, usage):
 
         return
     except Exception as ex:  # pylint: disable=broad-except
-        logger.warning("Failed to set response attributes for response span, error: %s", str(ex))
+        logger.warning(
+            "Failed to set response attributes for response span, error: %s", str(ex)
+        )
+
 
 def should_send_prompts():
-    return (
-        os.getenv("TRACE_CONTENT") or "true"
-    ).lower() == "true"
+    return (os.getenv("TRACE_CONTENT") or "true").lower() == "true"
+
 
 def model_as_dict(model):
     if version("pydantic") < "2.0.0":
@@ -502,6 +530,7 @@ def model_as_dict(model):
         return model_as_dict(model.parse())
     else:
         return model
+
 
 def accumulate_stream_items(item, complete_response):
     item = model_as_dict(item)
@@ -531,6 +560,7 @@ def accumulate_stream_items(item, complete_response):
             if delta.get("role"):
                 complete_choice["message"]["role"] = delta.get("role")
 
+
 class OpenTelemetryProvider:
     def __init__(self):
         self.tracer = None
@@ -542,28 +572,44 @@ class OpenTelemetryProvider:
     def recordException(self, name, headers, request, exception: Exception):
         if is_otel_available():
             trace_context = extract_trace_context(headers)
-            span = self.tracer.start_span(name=name,
-                                          kind = SpanKind.SERVER,
-                                          context=trace_context,
-                                          attributes = {
-                                              SpanAttributes.GEN_AI_REQUEST_TYPE: LLMRequestTypeValues.CHAT.value},
-                                          )
+            span = self.tracer.start_span(
+                name=name,
+                kind=SpanKind.SERVER,
+                context=trace_context,
+                attributes={
+                    SpanAttributes.GEN_AI_REQUEST_TYPE: LLMRequestTypeValues.CHAT.value
+                },
+            )
             set_request_attributes(span, request)
             if should_send_prompts():
                 set_prompts(span, request.messages)
             span.set_attribute(SpanAttributes.GEN_AI_RESPONSE_MODEL, request.model)
-            span.set_status(Status(status_code=StatusCode.ERROR, description=str(exception)))
+            span.set_status(
+                Status(status_code=StatusCode.ERROR, description=str(exception))
+            )
             span.end()
 
-    def record(self, name, headers, request, response, usage, start_time, time_of_first_token=None, stream=False):
+    def record(
+        self,
+        name,
+        headers,
+        request,
+        response,
+        usage,
+        start_time,
+        time_of_first_token=None,
+        stream=False,
+    ):
         if is_otel_available():
             trace_context = extract_trace_context(headers)
-            span = self.tracer.start_span(name=name,
-                                          kind = SpanKind.SERVER,
-                                          context=trace_context,
-                                          attributes = {
-                                              SpanAttributes.GEN_AI_REQUEST_TYPE: LLMRequestTypeValues.CHAT.value},
-                                          )
+            span = self.tracer.start_span(
+                name=name,
+                kind=SpanKind.SERVER,
+                context=trace_context,
+                attributes={
+                    SpanAttributes.GEN_AI_REQUEST_TYPE: LLMRequestTypeValues.CHAT.value
+                },
+            )
             set_request_attributes(span, request)
             if should_send_prompts():
                 set_prompts(span, request.messages)
@@ -592,15 +638,26 @@ class OpenTelemetryProvider:
                 duration = time.time() - start_time
             else:
                 duration = None
-            if duration and isinstance(duration, (float, int)) and Meters.is_metrics_inited:
-                Meters.chat_duration_histogram.record(duration, attributes=shared_attributes)
+            if (
+                duration
+                and isinstance(duration, (float, int))
+                and Meters.is_metrics_inited
+            ):
+                Meters.chat_duration_histogram.record(
+                    duration, attributes=shared_attributes
+                )
             if Meters.is_metrics_inited and stream:
-                if time_of_first_token and isinstance(time_of_first_token,
-                                                      (float, int)) and time_of_first_token > start_time:
-                    Meters.streaming_time_to_first_token.record((time_of_first_token - start_time),
-                                                                attributes=shared_attributes)
-                    Meters.streaming_time_to_generate.record(time.time() - time_of_first_token,
-                                                             attributes=shared_attributes)
+                if (
+                    time_of_first_token
+                    and isinstance(time_of_first_token, (float, int))
+                    and time_of_first_token > start_time
+                ):
+                    Meters.streaming_time_to_first_token.record(
+                        (time_of_first_token - start_time), attributes=shared_attributes
+                    )
+                    Meters.streaming_time_to_generate.record(
+                        time.time() - time_of_first_token, attributes=shared_attributes
+                    )
 
                 if usage and usage.get("completion_tokens"):
                     if not isinstance(usage, dict):
@@ -609,9 +666,12 @@ class OpenTelemetryProvider:
                     if Meters.is_metrics_inited and request.stream:
                         Meters.streaming_time_per_output_token.record(
                             (time.time() - time_of_first_token) / completion_tokens,
-                            attributes=shared_attributes)
-                    span.set_attribute(SpanAttributes.GEN_AI_STREAMING_TIME_PER_OUTPUT_TOKEN,
-                                       (time.time() - time_of_first_token) / completion_tokens)
+                            attributes=shared_attributes,
+                        )
+                    span.set_attribute(
+                        SpanAttributes.GEN_AI_STREAMING_TIME_PER_OUTPUT_TOKEN,
+                        (time.time() - time_of_first_token) / completion_tokens,
+                    )
 
             set_response_attributes(span, response, usage)
 
@@ -620,5 +680,6 @@ class OpenTelemetryProvider:
 
             span.set_status(Status(StatusCode.OK))
             span.end()
+
 
 otel_provider = OpenTelemetryProvider()
