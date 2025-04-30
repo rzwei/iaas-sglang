@@ -17,6 +17,7 @@ otel_import_error_traceback: Optional[str] = None
 tracer = None
 meter = None
 try:
+    from opentelemetry.context import get_current
     from opentelemetry.context.context import Context
     from opentelemetry.instrumentation.logging import LoggingInstrumentor
     from opentelemetry.instrumentation.system_metrics import SystemMetricsInstrumentor
@@ -32,7 +33,14 @@ try:
     )
     from opentelemetry.sdk.trace import TracerProvider
     from opentelemetry.sdk.trace.export import BatchSpanProcessor
-    from opentelemetry.trace import SpanKind, Tracer, get_tracer, set_tracer_provider
+    from opentelemetry.trace import (
+        INVALID_SPAN,
+        SpanKind,
+        Tracer,
+        get_current_span,
+        get_tracer,
+        set_tracer_provider,
+    )
     from opentelemetry.trace.propagation.tracecontext import (
         TraceContextTextMapPropagator,
     )
@@ -150,8 +158,11 @@ def get_metrics_exporter():
 
 def extract_trace_context(headers: Optional[Mapping[str, str]]) -> Optional[Context]:
     if is_otel_available():
-        headers = headers or {}
-        return TraceContextTextMapPropagator().extract(headers)
+        if get_current_span() is INVALID_SPAN:
+            headers = headers or {}
+            return TraceContextTextMapPropagator().extract(headers)
+        else:
+            return get_current()
     else:
         return None
 
