@@ -40,6 +40,7 @@ from sglang.srt.conversation import (
 )
 from sglang.srt.function_call_parser import FunctionCallParser
 from sglang.srt.managers.io_struct import EmbeddingReqInput, GenerateReqInput
+from sglang.srt.observability import accumulate_stream_items, otel_provider
 from sglang.srt.openai_api.protocol import (
     BatchRequest,
     BatchResponse,
@@ -73,7 +74,6 @@ from sglang.srt.openai_api.protocol import (
 )
 from sglang.srt.reasoning_parser import ReasoningParser
 from sglang.utils import convert_json_schema_to_str, get_exception_traceback
-from sglang.srt.observability import otel_provider, accumulate_stream_items
 
 logger = logging.getLogger(__name__)
 
@@ -1434,7 +1434,12 @@ async def v1_chat_completions(
             cached_tokens = {}
             time_of_first_token = {}
             usage = {}
-            complete_response = {"choices": [], "model": "", "usage": None, "error": None}
+            complete_response = {
+                "choices": [],
+                "model": "",
+                "usage": None,
+                "error": None,
+            }
             try:
                 async for content in tokenizer_manager.generate_request(
                     adapted_request, raw_request
@@ -1730,10 +1735,20 @@ async def v1_chat_completions(
                     usage=usage,
                 )
                 yield f"data: {final_usage_chunk.model_dump_json()}\n\n"
-                otel_provider.record("sglang_chat_completion", raw_request.headers, request, complete_response, usage,
-                                 start_time, time_of_first_token=time_of_first_token, stream=True)
+                otel_provider.record(
+                    "sglang_chat_completion",
+                    raw_request.headers,
+                    request,
+                    complete_response,
+                    usage,
+                    start_time,
+                    time_of_first_token=time_of_first_token,
+                    stream=True,
+                )
             except ValueError as e:
-                otel_provider.recordException("sglang_chat_completion", raw_request.headers, request, e)
+                otel_provider.recordException(
+                    "sglang_chat_completion", raw_request.headers, request, e
+                )
                 error = create_streaming_error_response(str(e))
                 yield f"data: {error}\n\n"
             yield "data: [DONE]\n\n"
@@ -1750,7 +1765,9 @@ async def v1_chat_completions(
             adapted_request, raw_request
         ).__anext__()
     except ValueError as e:
-        otel_provider.recordException("sglang_chat_completion", raw_request.headers, request, e)
+        otel_provider.recordException(
+            "sglang_chat_completion", raw_request.headers, request, e
+        )
         return create_error_response(str(e))
     if not isinstance(ret, list):
         ret = [ret]
@@ -1764,7 +1781,15 @@ async def v1_chat_completions(
         reasoning_parser=tokenizer_manager.server_args.reasoning_parser,
     )
 
-    otel_provider.record("sglang_chat_completion", raw_request.headers, request, response, response.usage, start_time, stream=False)
+    otel_provider.record(
+        "sglang_chat_completion",
+        raw_request.headers,
+        request,
+        response,
+        response.usage,
+        start_time,
+        stream=False,
+    )
 
     return response
 
