@@ -1144,6 +1144,8 @@ class ModelRunner:
                 f"{self.server_args.disable_cuda_graph_padding=} "
                 f"{forward_batch.can_run_tbo=} "
                 f"{forward_batch.forward_mode=}"
+                f"{forward_batch.batch_size=}"
+
             )
 
         if forward_batch.forward_mode.is_decode():
