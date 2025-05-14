@@ -104,3 +104,19 @@ docker run --rm \
 # 产物放到 output 目录下
 mkdir -p $OUTPUT_PATH
 cp -r $SRC_PATH/dist/* $OUTPUT_PATH/
+
+TOS_UTIL_URL=https://tos-tools.tos-cn-beijing.volces.com/linux/amd64/tosutil
+if [ ! -z "$CUSTOM_TOS_UTIL_URL" ]; then
+    TOS_UTIL_URL=$CUSTOM_TOS_UTIL_URL
+fi
+
+if [ -z "$CUSTOM_TOS_AK" ] && [ -z "$CUSTOM_TOS_SK" ]; then
+    echo "CUSTOM_TOS_AK and CUSTOM_TOS_SK are not set, skip uploading to tos"
+else
+    # 上传制品到 tos
+    wget $TOS_UTIL_URL -O tosutil && chmod +x tosutil
+    for wheel_file in $(find $OUTPUT_PATH -name "*.whl"); do
+        echo "uploading $wheel_file to tos..."
+        ./tosutil cp $wheel_file tos://${CUSTOM_TOS_BUCKET}/packages/sgl-kernel/$(basename $wheel_file) -re cn-beijing -e tos-cn-beijing.volces.com -i $CUSTOM_TOS_AK -k $CUSTOM_TOS_SK
+    done
+fi
