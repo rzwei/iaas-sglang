@@ -144,30 +144,45 @@ class TpModelWorkerClient:
             resolve_future_token_ids(input_ids, self.future_token_ids_map)
 
             # Run forward
+            import os
+            skip_sample = False
+            if os.getenv("SKIP_SAMPLE") == "1":
+                skip_sample = True
             logits_output, next_token_ids = self.worker.forward_batch_generation(
-                model_worker_batch, self.launch_done
+                model_worker_batch, self.launch_done, skip_sample=skip_sample
             )
 
             # Update the future token ids map
-            bs = len(model_worker_batch.seq_lens)
-            self.future_token_ids_map[
-                future_token_ids_ct + 1 : future_token_ids_ct + bs + 1
-            ] = next_token_ids
+            if next_token_ids is not None:
+                bs = len(model_worker_batch.seq_lens)
+                self.future_token_ids_map[
+                    future_token_ids_ct + 1 : future_token_ids_ct + bs + 1
+                ] = next_token_ids
 
-            # Copy results to the CPU
-            if model_worker_batch.return_logprob:
-                logits_output.next_token_logprobs = (
-                    logits_output.next_token_logprobs.to("cpu", non_blocking=True)
-                )
-                if logits_output.input_token_logprobs is not None:
-                    logits_output.input_token_logprobs = (
-                        logits_output.input_token_logprobs.to("cpu", non_blocking=True)
+                # Copy results to the CPU
+                if model_worker_batch.return_logprob:
+                    logits_output.next_token_logprobs = (
+                        logits_output.next_token_logprobs.to("cpu", non_blocking=True)
                     )
-            if logits_output.hidden_states is not None:
-                logits_output.hidden_states = logits_output.hidden_states.to(
-                    "cpu", non_blocking=True
-                )
-            next_token_ids = next_token_ids.to("cpu", non_blocking=True)
+                    if logits_output.input_token_logprobs is not None:
+                        logits_output.input_token_logprobs = (
+                            logits_output.input_token_logprobs.to("cpu", non_blocking=True)
+                        )
+                if logits_output.hidden_states is not None:
+                    logits_output.hidden_states = logits_output.hidden_states.to(
+                        "cpu", non_blocking=True
+                    )
+
+                import time
+                start = time.perf_counter()
+                next_token_ids = next_token_ids.to("cpu", non_blocking=True)
+                end = time.perf_counter()
+                print(f"Transfer to CPU took {(end - start)*1000:.3f} ms")
+                
+            else: 
+                # print("~~~~~~~ using fake output ~~~~~~")
+                next_token_ids = torch.zeros(1, device = "cpu", dtype = torch.int64)
+
             copy_done.record()
 
             self.output_queue.put((copy_done, logits_output, next_token_ids))
