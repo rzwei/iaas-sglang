@@ -22,6 +22,12 @@ TensorPoolSize = 1024
 
 REMOTE_EIC_YAML_ENV_VAR = "REMOTE_EIC_YAML"
 
+# gpu direct rdma for kv set
+G_EnableKVSetGPUDirect = False
+
+# gpu direct rdma for kv get
+G_EnableKVGetGPUDirect = True
+
 
 class FlexibleKVCacheMemoryPool:
     def __init__(self, conn, device: str, kv_cache_shape, kv_cache_dtype):
@@ -131,6 +137,15 @@ class EICKVClient:
         eic_flag_file = config.get("eic_flag_file", None)
         logger.info(f"eic flag_file: {eic_flag_file}")
 
+        G_EnableKVSetGPUDirect = config.get("enable_kvset_gpu_direct", False)
+        logger.info(f"eic enable_kvset_gpu_direct: {G_EnableKVSetGPUDirect}")
+        G_EnableKVGetGPUDirect = config.get("enable_kvget_gpu_direct", True)
+        logger.info(f"eic enable_kvget_gpu_direct: {G_EnableKVGetGPUDirect}")
+        # rdma write
+        enable_kv_set_direct = config.get("enable_kvset_direct", True)
+        logger.info(f"eic enable_kv_set_direct: {enable_kv_set_direct}")
+        self.enable_kv_set_direct = enable_kv_set_direct
+
         if not os.path.exists(eic_log_dir) and not os.path.isdir(eic_log_dir):
             os.makedirs(eic_log_dir, exist_ok=True)
 
@@ -152,10 +167,16 @@ class EICKVClient:
         self.kv_cache_shape = kv_cache_shape
         self.kv_cache_dtype = kv_cache_dtype
         self.kv_cache_mem_pool = FlexibleKVCacheMemoryPool(
-            self.connection, self.device, self.kv_cache_shape, self.kv_cache_dtype
+            self.connection,
+            self.device if G_EnableKVGetGPUDirect else "cpu",
+            self.kv_cache_shape,
+            self.kv_cache_dtype,
         )
         self.kv_cache_write_mem_pool = FlexibleKVCacheMemoryPool(
-            self.connection, self.device, self.kv_cache_shape, self.kv_cache_dtype
+            self.connection,
+            self.device if G_EnableKVSetGPUDirect else "cpu",
+            self.kv_cache_shape,
+            self.kv_cache_dtype,
         )
 
     def exists(self, key: str) -> bool:
@@ -337,7 +358,9 @@ class EICKVClient:
 
             keys_vec.append(key)
             vals_vec.append(
-                temp.data_ptr(), temp.element_size() * temp.numel(), registered
+                temp.data_ptr(),
+                temp.element_size() * temp.numel(),
+                registered and self.enable_kv_set_direct,
             )
 
         # set options
@@ -455,11 +478,13 @@ class EICBaseTokenToKVPoolHost:
         start_time = time.perf_counter()
 
         keys = self._encode_key(indices)
-        values = torch.split(flat_data, 1, dim=self.split_dim)
+        if not G_EnableKVSetGPUDirect:
+            values = torch.split(flat_data.cpu(), 1, dim=self.split_dim)
+        else:
+            values = torch.split(flat_data, 1, dim=self.split_dim)
+
         bs = TensorPoolSize
-
         split_time = time.perf_counter()
-
         for i in range(0, len(keys), bs):
             key = keys[i : i + bs]
             value = values[i : i + bs]
